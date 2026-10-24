@@ -5,7 +5,9 @@ from importlib.util import find_spec
 from inspect import signature
 
 import extractly
-from extractly import OfflineEvaluator, OnlineEvaluator
+from extractly import CUAdapter, OfflineEvaluator, OnlineEvaluator, build_ground_truth
+from extractly.cu import CUAdapter as PackagedCUAdapter
+from extractly.cu.ground_truth import build_ground_truth as packaged_build_ground_truth
 
 
 def test_given_installed_package_when_inspected_then_no_cli_entry_points() -> None:
@@ -23,3 +25,11 @@ def test_given_public_api_when_imported_then_independent_evaluators() -> None:
     assert "OnlineEvaluator" in extractly.__all__
     assert "mode" not in signature(OfflineEvaluator.run).parameters
     assert "mode" not in signature(OnlineEvaluator.run).parameters
+
+
+def test_given_cu_subpackage_when_imported_then_public_api_is_consistent() -> None:
+    """Expose CU helpers through the root and subpackage without a legacy shim."""
+    assert CUAdapter is PackagedCUAdapter
+    assert build_ground_truth is packaged_build_ground_truth
+    assert "build_ground_truth" in extractly.__all__
+    assert find_spec("extractly.adapter") is None

@@ -46,7 +46,7 @@ It does not instantiate online graders or accept model/credential settings.
 import json
 from pathlib import Path
 
-from extractly import OfflineEvaluationConfig, OfflineEvaluator
+from extractly import FoundryEvaluationRunner, OfflineEvaluationConfig, OfflineEvaluator
 
 sample = Path("samples") / "document-evaluation"
 config = OfflineEvaluationConfig.model_validate_json(
@@ -54,7 +54,7 @@ config = OfflineEvaluationConfig.model_validate_json(
 )
 document = json.loads((sample / "synthetic.jsonl").read_text(encoding="utf-8"))
 
-evaluator = OfflineEvaluator(config)
+evaluator = OfflineEvaluator(config, runner=FoundryEvaluationRunner())
 report = evaluator.evaluate(
     document["cu_result"],
     document_id=document["id"],
@@ -78,9 +78,9 @@ It never runs offline comparison or text-F1 diagnostics.
 For schema-only assessment, no model or credentials are needed:
 
 ```python
-from extractly import OnlineEvaluationConfig, OnlineEvaluator
+from extractly import FoundryEvaluationRunner, OnlineEvaluationConfig, OnlineEvaluator
 
-online = OnlineEvaluator(OnlineEvaluationConfig())
+online = OnlineEvaluator(OnlineEvaluationConfig(), runner=FoundryEvaluationRunner())
 online_report = online.evaluate(document["cu_result"], document_id=document["id"])
 ```
 
@@ -90,7 +90,7 @@ For semantic checks, pass your application's configured credential:
 online_config = OnlineEvaluationConfig.model_validate_json(
     (sample / "online.json").read_text(encoding="utf-8")
 )
-semantic_evaluator = OnlineEvaluator(online_config, credential=credential)
+semantic_evaluator = OnlineEvaluator(online_config, runner=FoundryEvaluationRunner(), credential=credential)
 online_report = semantic_evaluator.evaluate(
     document["cu_result"], document_id=document["id"]
 )
@@ -175,11 +175,36 @@ Gold annotations use the adapter's canonical structure:
 }
 ```
 
-Use `CUAdapter(config).prepare(raw, document_id)["response"]` to inspect the
-format, but annotate gold independently from original evidence. Wrong nonempty
-values count as both a false positive and a false negative. Category and page
-metadata affect exact match but do not inflate field F1. Tolerant scores remain
-separate from strict normalized exact match.
+### Draft ground truth from CU
+
+Use `build_ground_truth` to create an editable dictionary in this format from
+either raw CU content or a successful operation envelope:
+
+```python
+from extractly import build_ground_truth
+
+draft = build_ground_truth(document["cu_result"])
+```
+
+The helper requires no evaluation configuration, credentials, or document ID.
+It shares CU parsing with `CUAdapter`, preserves nested values and duplicate
+occurrences, and excludes confidence, spans, source metadata, and Markdown.
+Editing the draft does not mutate the raw CU result. File persistence remains
+the caller's responsibility.
+
+> [!WARNING]
+> A CU-derived draft is not independent gold. Verify and correct it against the
+> original document, including missing fields, rows, and document instances,
+> before passing it as `ground_truth`. Comparing unchanged predictions with
+> their own draft cannot establish extraction accuracy.
+
+CU conversion lives in `extractly.cu`, with separate adapter and ground-truth
+modules backed by a shared parser. Import the adapter with
+`from extractly import CUAdapter` or `from extractly.cu import CUAdapter`.
+
+Wrong nonempty values count as both a false positive and a false negative.
+Category and page metadata affect exact match but do not inflate field F1.
+Tolerant scores remain separate from strict normalized exact match.
 
 ## Reports and failure behavior
 
@@ -196,7 +221,8 @@ process exit codes.
 
 ## Extend without changing the library
 
-Supply additional Foundry-compatible evaluator callables:
+Supply additional evaluator callables or caller-configured `AzureOpenAIGrader`
+objects:
 
 ```python
 def check_application_rule(*, response: str, **kwargs: object) -> dict[str, object]:
@@ -204,15 +230,43 @@ def check_application_rule(*, response: str, **kwargs: object) -> dict[str, obje
     return {"within_size_limit": int(len(response) <= 10000)}
 
 evaluator = OfflineEvaluator(
-    config, evaluators={"application_rule": check_application_rule}
+  config, runner=FoundryEvaluationRunner(), evaluators={"application_rule": check_application_rule}
 )
 ```
 
 The SDK inspects signatures, so name variadic keyword arguments `kwargs`.
-Custom evaluators cannot replace reserved built-ins. An optional `runner`
-constructor argument on either evaluator accepts a caller-configured function compatible with
-Foundry's `evaluate` for controlled execution/testing. All such dependencies
+Custom evaluators cannot replace reserved built-ins. All such dependencies
 remain caller-owned.
+
+The shared `Evaluator` type is `Callable[..., JsonObject] | AzureOpenAIGrader`.
+Custom callables return named-result dictionaries; grader objects are passed
+unchanged to the runner. Custom runners that directly invoke evaluators must
+handle or explicitly reject grader objects rather than assume every evaluator
+is callable.
+
+### Typed execution runners
+
+Both workflow constructors require an explicit `runner` instance. Use
+`FoundryEvaluationRunner()` for standard execution with
+`azure.ai.evaluation.evaluate`; neither workflow silently selects a backend.
+Passing `None` or a plain function is not supported.
+
+The `extractly.eval_runner` subpackage exports `EvaluationRunner`,
+`RunnerRequest`, `RunnerResult`, and `FoundryEvaluationRunner`.
+Custom runners subclass `EvaluationRunner` and implement
+`run(request: RunnerRequest) -> RunnerResult`.
+
+* `RunnerRequest` contains a `Path` to the temporary JSONL dataset, a mapping
+  of named evaluators, `evaluation_name`, optional `azure_ai_project`, and
+  `fail_on_evaluator_errors`.
+* `RunnerResult` contains `rows`, `metrics`, and optional provider `metadata`.
+  Rows use `inputs.id` and `outputs.<evaluator>.<metric>` keys; metric names use
+  `<evaluator>.<metric>`. Metadata cannot override the typed rows or metrics.
+
+Runners must consume the dataset before returning and propagate provider
+failures. Shared execution still validates exact ID coverage, evaluator outputs,
+and schema flags; each workflow validates its additional result requirements.
+The caller retains ownership of runners, evaluators, and credentials.
 
 ## Scope and limits
 

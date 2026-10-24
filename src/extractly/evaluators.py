@@ -16,8 +16,8 @@ from typing import Any
 from jsonschema import FormatChecker
 from jsonschema.validators import validator_for
 
-from .adapter import MISSING, pointer, slots
 from .config import EvaluationConfig, FieldRule
+from .cu.cu_result_parser import MISSING, pointer, slots
 from .types import JsonObject
 
 

@@ -1,4 +1,8 @@
-"""Share Foundry execution and reporting mechanics, not evaluation workflows."""
+"""Validate evaluation inputs, run Foundry jobs, and assemble shared reports.
+
+Offline and online workflows choose their evaluators and scoring policies.
+These helpers handle dataset serialization, result validation, and reporting.
+"""
 
 import json
 import math
@@ -7,28 +11,52 @@ from hashlib import sha256
 from importlib.metadata import version
 from pathlib import Path
 
-from azure.ai.evaluation import evaluate
+from azure.ai.evaluation import AzureOpenAIGrader
 
 from .config import EvaluationConfig
-from .types import EvaluationRunner, Evaluator, FoundryEvaluator, JsonObject
+from .eval_runner import EvaluationRunner, RunnerRequest, RunnerResult
+from .types import Evaluator, JsonObject
 
 RESERVED_EVALUATORS = {"schema", "extraction", "text_f1", "groundedness", "field_label", "coverage"}
 
 
-def custom_evaluators(evaluators: Mapping[str, Evaluator] | None, runner: EvaluationRunner | None) -> dict[str, Evaluator]:
-    """Validate caller-owned extensions without replacing mandatory checks."""
-    if runner is not None and not callable(runner):
-        raise TypeError("runner must be callable")
+def custom_evaluators(evaluators: Mapping[str, Evaluator] | None, runner: EvaluationRunner) -> dict[str, Evaluator]:
+    """Validate caller-supplied evaluators and runner, reserving built-in evaluator names.
+
+    Args:
+        evaluators: Optional mapping of nonempty custom names to callable evaluators or AzureOpenAIGrader objects; None adds no custom evaluators.
+        runner: Required caller-configured EvaluationRunner implementation.
+
+    Returns:
+        A new dictionary containing the caller's custom evaluators without invoking them.
+
+    Raises:
+        TypeError: The runner does not implement EvaluationRunner, a custom evaluator name is invalid, or an implementation is neither callable nor an AzureOpenAIGrader.
+        ValueError: A custom evaluator name is reserved for a built-in check.
+    """
+    if not isinstance(runner, EvaluationRunner):
+        raise TypeError("runner must be an EvaluationRunner")
     custom = dict(evaluators) if evaluators is not None else {}
     if custom.keys() & RESERVED_EVALUATORS:
         raise ValueError("Custom evaluator names must not replace built-in checks")
-    if any(not isinstance(name, str) or not name.strip() or not callable(evaluator) for name, evaluator in custom.items()):
-        raise TypeError("Custom evaluators require nonempty string names and callable values")
+    if any(not isinstance(name, str) or not name.strip() or not (callable(evaluator) or isinstance(evaluator, AzureOpenAIGrader)) for name, evaluator in custom.items()):
+        raise TypeError("Custom evaluators require nonempty string names and callable or AzureOpenAIGrader values")
     return custom
 
 
 def validate_document(document: object) -> JsonObject:
-    """Require a source record with an identity and saved CU result."""
+    """Validate a document's envelope without inspecting its CU payload.
+
+    Args:
+        document: Incoming dictionary with a nonblank string id and a cu_result key.
+
+    Returns:
+        The original dictionary unchanged; CU payload and workflow-specific validation remain with the caller.
+
+    Raises:
+        TypeError: The document is not a dictionary.
+        ValueError: The id is missing, blank, or not a string, or the cu_result key is absent.
+    """
     if not isinstance(document, dict):
         raise TypeError("Every document must be a dictionary")
     if not isinstance(document.get("id"), str) or not document["id"].strip():
@@ -39,7 +67,24 @@ def validate_document(document: object) -> JsonObject:
 
 
 def write_records(path: Path, records: Iterable[JsonObject]) -> set[str]:
-    """Serialize a nonempty dataset with unique IDs, rejecting invalid JSON values."""
+    """Write prepared records as UTF-8 JSONL and require a nonempty, unique-ID dataset.
+
+    The destination is overwritten, and a failure can leave a partial file.
+    Record envelopes must already contain validated, nonblank string IDs.
+
+    Args:
+        path: Destination file whose parent directory must already exist.
+        records: Iterable of prepared records to serialize in full, one record per line.
+
+    Returns:
+        The set of document IDs written to the dataset.
+
+    Raises:
+        KeyError: A record has no id key.
+        TypeError: A record contains a value that cannot be serialized as JSON.
+        ValueError: The dataset is empty, an ID is duplicated, or a record contains nonfinite numbers or circular references.
+        OSError: The destination cannot be opened or written.
+    """
     ids: set[str] = set()
     with path.open("w", encoding="utf-8") as output:
         for record in records:
@@ -54,7 +99,17 @@ def write_records(path: Path, records: Iterable[JsonObject]) -> set[str]:
 
 
 def _json_safe(value: object) -> object:
-    """Convert undefined SDK ratios to null and reject infinite results."""
+    """Replace floating-point NaN with None and reject infinity in nested results.
+
+    Args:
+        value: Result value to inspect recursively through dictionary values and list items.
+
+    Returns:
+        Rebuilt dictionaries and lists with NaN replaced by None; other values are returned unchanged.
+
+    Raises:
+        RuntimeError: A floating-point value is positive or negative infinity.
+    """
     if isinstance(value, dict):
         return {key: _json_safe(item) for key, item in value.items()}
     if isinstance(value, list):
@@ -66,15 +121,35 @@ def _json_safe(value: object) -> object:
     return value
 
 
-def execute(config: EvaluationConfig, data: Path, expected_ids: set[str], evaluators: dict[str, FoundryEvaluator], *, evaluation_name: str, runner: EvaluationRunner | None) -> JsonObject:
-    """Delegate one job and require complete rows with usable named outputs."""
-    arguments: JsonObject = {
-        "data": str(data), "evaluators": evaluators, "azure_ai_project": config.project,
-        "evaluation_name": evaluation_name, "fail_on_evaluator_errors": True,
-    }
-    result = runner(**arguments) if runner is not None else dict(evaluate(**arguments))
-    if not isinstance(result, dict):
-        raise RuntimeError("Foundry must return an evaluation dictionary")
+def execute(config: EvaluationConfig, data: Path, expected_ids: set[str], evaluators: dict[str, Evaluator], *, evaluation_name: str, runner: EvaluationRunner) -> JsonObject:
+    """Run one evaluation job and validate its returned rows and metrics.
+
+    Each expected ID must appear exactly once, and every row must contain at
+    least one non-null output per evaluator. Schema checks must return a valid
+    conformance flag. Provider exceptions propagate unchanged, and supplied
+    evaluators and runners remain caller-owned.
+
+    Args:
+        config: Shared configuration supplying the optional Foundry project destination.
+        data: Path to the prepared JSONL dataset passed to the evaluation runner.
+        expected_ids: Exact set of document or field-row IDs required in the results.
+        evaluators: Named evaluator callables or graders selected by the workflow.
+        evaluation_name: Name identifying this evaluation job.
+        runner: Required implementation accepting a RunnerRequest and returning a RunnerResult.
+
+    Returns:
+        The validated result dictionary with nested floating-point NaN values converted to None.
+
+    Raises:
+        RuntimeError: The runner returns an invalid result structure, incomplete coverage, missing evaluator outputs, an invalid schema flag, or infinite values.
+    """
+    request = RunnerRequest(data=data, evaluators=evaluators, azure_ai_project=config.project, evaluation_name=evaluation_name, fail_on_evaluator_errors=True)
+    output = runner.run(request)
+    if not isinstance(output, RunnerResult):
+        raise RuntimeError("runner must return a RunnerResult")
+    if not isinstance(output.metadata, dict):
+        raise RuntimeError("runner metadata must be a dictionary")
+    result = {**output.metadata, "rows": output.rows, "metrics": output.metrics}
     rows = result.get("rows")
     if not isinstance(rows, list) or not rows:
         raise RuntimeError(f"Foundry returned no evaluation rows for {evaluation_name}")
@@ -96,7 +171,14 @@ def execute(config: EvaluationConfig, data: Path, expected_ids: set[str], evalua
 
 
 def collect_metrics(results: JsonObject) -> JsonObject:
-    """Retain native metrics from each independently executed job."""
+    """Merge job metrics without recalculating or averaging their values.
+
+    Args:
+        results: Mapping of job names to validated result dictionaries containing metrics dictionaries.
+
+    Returns:
+        A new metrics dictionary; later jobs overwrite earlier values with the same metric name.
+    """
     return {key: value for result in results.values() for key, value in result["metrics"].items()}
 
 
@@ -110,7 +192,30 @@ def build_report(
     review_required: bool,
     fields: JsonObject,
 ) -> JsonObject:
-    """Add common minimum-score gates and provenance to workflow-owned results."""
+    """Assemble a report with minimum-score gates and reproducibility metadata.
+
+    Missing, nonnumeric, boolean, or nonfinite metric values fail configured
+    gates. No configured thresholds produces a not_configured gate status.
+    A workflow review flag or failed gate requires review; otherwise the
+    recommendation remains uncalibrated. The caller owns report persistence.
+
+    Args:
+        config: Shared configuration supplying metric thresholds and the configuration fingerprint.
+        results: Validated per-job evaluation results retained in the report without copying.
+        metrics: Workflow-computed and collected metrics retained in the report without copying.
+        workflow: Workflow identifier, such as offline or online, stored as the report mode.
+        document_count: Number of source documents evaluated by the workflow.
+        review_required: Whether workflow-specific checks already require human review, independently of configured gates.
+        fields: Per-field summaries supplied by the workflow and retained without copying; online evaluation supplies an empty dictionary.
+
+    Returns:
+        A JSON-serializable report containing results, metrics, gates, review status, configuration hash, and package versions.
+
+    Raises:
+        TypeError: The assembled report contains values that cannot be serialized as JSON.
+        ValueError: The assembled report contains nonfinite numbers or circular references.
+        PackageNotFoundError: Installed package metadata is unavailable for a reported dependency or Extractly.
+    """
     gates = {
         metric: isinstance(metrics.get(metric), (int, float)) and not isinstance(metrics.get(metric), bool) and math.isfinite(metrics[metric]) and metrics[metric] >= floor
         for metric, floor in config.thresholds.items()

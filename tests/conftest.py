@@ -1,16 +1,12 @@
-"""Provide synthetic CU fixtures and a controlled Foundry-compatible runner.
-
-Any is used only for the SDK's open-ended keyword and result dictionaries.
-"""
+"""Provide synthetic CU fixtures and a controlled typed evaluation runner."""
 
 import json
-from pathlib import Path
-from typing import Any
 
 import pytest
 
 from extractly import CUAdapter, EvaluationConfig, OfflineEvaluationConfig, OnlineEvaluationConfig
-from extractly.types import EvaluationRunner, JsonObject
+from extractly.eval_runner import EvaluationRunner, RunnerRequest, RunnerResult
+from extractly.types import JsonObject
 
 
 @pytest.fixture
@@ -68,23 +64,28 @@ def record(config: EvaluationConfig, raw: JsonObject) -> JsonObject:
     return CUAdapter(config).prepare(raw, "document-1")
 
 
-@pytest.fixture
-def local_runner() -> EvaluationRunner:
-    """Execute real deterministic callables behind the public runner contract."""
-    def run(**kwargs: Any) -> JsonObject:
-        """Return native-shaped results without model calls."""
-        assert kwargs["fail_on_evaluator_errors"] is True
-        records = [json.loads(line) for line in Path(kwargs["data"]).read_text(encoding="utf-8").splitlines()]
+class LocalRunner(EvaluationRunner):
+    """Execute deterministic evaluator callables without model services."""
+
+    def run(self, request: RunnerRequest) -> RunnerResult:
+        """Return typed results while preserving the common runner contract."""
+        assert request.fail_on_evaluator_errors is True
+        records = [json.loads(line) for line in request.data.read_text(encoding="utf-8").splitlines()]
         rows = []
         numeric: dict[str, list[float]] = {}
         for item in records:
             row = {"inputs.id": item["id"], "inputs.ground_truth": item.get("ground_truth", "")}
-            for name, evaluator in kwargs["evaluators"].items():
+            for name, evaluator in request.evaluators.items():
+                assert callable(evaluator)
                 for key, value in evaluator(**item).items():
                     row[f"outputs.{name}.{key}"] = value
                     if isinstance(value, (int, float)) and not isinstance(value, bool):
                         numeric.setdefault(f"{name}.{key}", []).append(value)
             rows.append(row)
-        return {"rows": rows, "metrics": {key: sum(values) / len(values) for key, values in numeric.items()}}
+        return RunnerResult(rows=rows, metrics={key: sum(values) / len(values) for key, values in numeric.items()})
 
-    return run
+
+@pytest.fixture
+def local_runner() -> EvaluationRunner:
+    """Return a caller-owned typed runner for local deterministic tests."""
+    return LocalRunner()

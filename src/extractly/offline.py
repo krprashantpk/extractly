@@ -10,10 +10,11 @@ from tempfile import TemporaryDirectory
 from azure.ai.evaluation import F1ScoreEvaluator
 
 from ._shared import build_report, collect_metrics, custom_evaluators, execute, validate_document, write_records
-from .adapter import CUAdapter
 from .config import EvaluationConfig
+from .cu import CUAdapter
+from .eval_runner import EvaluationRunner
 from .evaluators import ExtractionEvaluator, SchemaEvaluator, ratios
-from .types import EvaluationRunner, Evaluator, FoundryEvaluator, JsonObject
+from .types import Evaluator, JsonObject
 
 logger = logging.getLogger(__name__)
 
@@ -43,17 +44,17 @@ class OfflineEvaluator:
     """Compare saved CU extraction with required independent gold annotations.
 
     This workflow never creates credentials or instantiates online graders.
-    Custom evaluators and an optional Foundry-compatible runner remain
+    Custom evaluators and the required execution runner remain
     caller-owned. Report persistence is the caller's responsibility.
     """
 
-    def __init__(self, config: OfflineEvaluationConfig, *, evaluators: Mapping[str, Evaluator] | None = None, runner: EvaluationRunner | None = None) -> None:
+    def __init__(self, config: OfflineEvaluationConfig, *, runner: EvaluationRunner, evaluators: Mapping[str, Evaluator] | None = None) -> None:
         """Configure gold-based scoring without authentication or service calls.
 
         Args:
             config: Offline comparison, schema, and minimum-score gate policy.
-            evaluators: Additional caller-configured Foundry-compatible checks.
-            runner: Optional caller-configured replacement for Foundry evaluate.
+            runner: Required caller-configured execution runner, such as FoundryEvaluationRunner.
+            evaluators: Additional caller-configured callable checks or AzureOpenAIGrader objects.
 
         Raises:
             TypeError: Config or a supplied dependency violates its contract.
@@ -94,7 +95,7 @@ class OfflineEvaluator:
         """
         config = OfflineEvaluationConfig.model_validate(self.config.model_dump())
         adapter = CUAdapter(config)
-        selected: dict[str, FoundryEvaluator] = {"schema": SchemaEvaluator(config), "extraction": ExtractionEvaluator(config), **self.evaluators}
+        selected: dict[str, Evaluator] = {"schema": SchemaEvaluator(config), "extraction": ExtractionEvaluator(config), **self.evaluators}
         if config.text_f1:
             selected["text_f1"] = F1ScoreEvaluator()
 

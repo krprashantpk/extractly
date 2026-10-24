@@ -8,7 +8,8 @@ import pytest
 from pytest_mock import MockerFixture
 
 from extractly import OfflineEvaluationConfig, OfflineEvaluator
-from extractly.types import EvaluationRunner, JsonObject
+from extractly.eval_runner import EvaluationRunner, FoundryEvaluationRunner, RunnerResult
+from extractly.types import JsonObject
 
 
 def test_given_offline_when_run_then_pooled_metrics_and_provenance(raw: JsonObject, record: JsonObject, offline_config: OfflineEvaluationConfig, local_runner: EvaluationRunner) -> None:
@@ -76,21 +77,22 @@ def test_given_text_diagnostic_when_enabled_then_offline_only(mocker: MockerFixt
 
 
 @pytest.mark.parametrize("bad_counts", [True, -1, None, 1.5])
-def test_given_invalid_extraction_counts_when_returned_then_rejected(bad_counts: object, raw: JsonObject, record: JsonObject) -> None:
+def test_given_invalid_extraction_counts_when_returned_then_rejected(bad_counts: object, raw: JsonObject, record: JsonObject, local_runner: EvaluationRunner, mocker: MockerFixture) -> None:
     """Require nonnegative integer occurrence counts before micro aggregation."""
     provider_result = {"rows": [{
         "inputs.id": "d", "outputs.schema.valid": 1, "outputs.extraction.tp": bad_counts,
         "outputs.extraction.fp": 0, "outputs.extraction.fn": 0,
     }], "metrics": {}}
+    mocker.patch.object(local_runner, "run", return_value=RunnerResult(rows=provider_result["rows"], metrics={}))
 
     with pytest.raises(RuntimeError, match="occurrence counts"):
-        OfflineEvaluator(OfflineEvaluationConfig(), runner=lambda **kwargs: provider_result).evaluate(raw, document_id="d", ground_truth=json.loads(record["response"]))
+        OfflineEvaluator(OfflineEvaluationConfig(), runner=local_runner).evaluate(raw, document_id="d", ground_truth=json.loads(record["response"]))
 
 
 @pytest.mark.sdk
 def test_given_real_sdk_when_offline_then_native_execution_succeeds(raw: JsonObject, record: JsonObject, offline_config: OfflineEvaluationConfig) -> None:
     """Exercise installed Foundry execution without online model calls."""
-    result = OfflineEvaluator(offline_config).evaluate(raw, document_id="synthetic-sdk-test", ground_truth=json.loads(record["response"]))
+    result = OfflineEvaluator(offline_config, runner=FoundryEvaluationRunner()).evaluate(raw, document_id="synthetic-sdk-test", ground_truth=json.loads(record["response"]))
 
     assert result["metrics"]["extraction.micro_f1"] == 1
     assert result["foundry"]["documents"]["rows"][0]["inputs.id"] == "synthetic-sdk-test"
@@ -105,7 +107,7 @@ def test_given_undefined_ratios_when_sdk_aggregates_then_valid_json(raw: JsonObj
     empty_gold = deepcopy(gold)
     empty_gold["segments"][0]["fields"] = {}
 
-    result = OfflineEvaluator(offline_config).run([
+    result = OfflineEvaluator(offline_config, runner=FoundryEvaluationRunner()).run([
         {"id": "positive", "cu_result": raw, "ground_truth": gold},
         {"id": "no-values", "cu_result": empty, "ground_truth": empty_gold},
     ])

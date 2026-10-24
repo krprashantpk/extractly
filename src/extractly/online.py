@@ -11,10 +11,11 @@ from azure.core.credentials import TokenCredential
 from pydantic import Field, model_validator
 
 from ._shared import build_report, collect_metrics, custom_evaluators, execute, validate_document, write_records
-from .adapter import CUAdapter
 from .config import EvaluationConfig, ModelSettings
+from .cu import CUAdapter
+from .eval_runner import EvaluationRunner
 from .evaluators import SchemaEvaluator
-from .types import EvaluationRunner, Evaluator, FoundryEvaluator, JsonObject
+from .types import Evaluator, JsonObject
 
 logger = logging.getLogger(__name__)
 
@@ -79,18 +80,18 @@ def _validate_semantic(result: JsonObject, *, groundedness: bool = False, grader
 class OnlineEvaluator:
     """Assess extraction without gold, independently of offline scoring.
 
-    Credentials, custom evaluators, and the optional runner remain caller-owned.
+    Credentials, custom evaluators, and the required runner remain caller-owned.
     The package never creates or closes credentials or persists reports.
     """
 
-    def __init__(self, config: OnlineEvaluationConfig, *, credential: TokenCredential | None = None, evaluators: Mapping[str, Evaluator] | None = None, runner: EvaluationRunner | None = None) -> None:
+    def __init__(self, config: OnlineEvaluationConfig, *, runner: EvaluationRunner, credential: TokenCredential | None = None, evaluators: Mapping[str, Evaluator] | None = None) -> None:
         """Configure reference-free checks without creating clients or service calls.
 
         Args:
             config: Online schema, semantic-grading, budget, and gate policy.
+            runner: Required caller-configured execution runner, such as FoundryEvaluationRunner.
             credential: Caller-configured credential for built-in semantic evaluators.
-            evaluators: Additional caller-configured Foundry-compatible checks.
-            runner: Optional caller-configured replacement for Foundry evaluate.
+            evaluators: Additional caller-configured callable checks or AzureOpenAIGrader objects.
 
         Raises:
             TypeError: Config or a supplied dependency violates its contract.
@@ -143,7 +144,7 @@ class OnlineEvaluator:
         """
         config = OnlineEvaluationConfig.model_validate(self.config.model_dump())
         adapter = CUAdapter(config)
-        selected: dict[str, FoundryEvaluator] = {"schema": SchemaEvaluator(config), **self.evaluators}
+        selected: dict[str, Evaluator] = {"schema": SchemaEvaluator(config), **self.evaluators}
         if config.groundedness:
             if config.model is None:
                 raise ValueError("Groundedness requires model settings")

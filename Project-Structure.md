@@ -22,8 +22,17 @@ Extractly/
 |-- src/extractly/
 |   |-- __init__.py
 |   |-- _shared.py
-|   |-- adapter.py
 |   |-- config.py
+|   |-- cu/
+|   |   |-- __init__.py
+|   |   |-- adapter.py
+|   |   |-- cu_result_parser.py
+|   |   `-- ground_truth.py
+|   |-- eval_runner/
+|   |   |-- __init__.py
+|   |   |-- base.py
+|   |   |-- foundry.py
+|   |   `-- types.py
 |   |-- evaluators.py
 |   |-- offline.py
 |   |-- online.py
@@ -42,19 +51,27 @@ Extractly/
 ## Core modules
 
 * [Public API](src/extractly/__init__.py) exports separate online/offline
-  workflows and configuration, the adapter, and deterministic evaluators.
+  workflows and configuration, the adapter, the ground-truth draft builder,
+  and deterministic evaluators.
 * [Configuration](src/extractly/config.py) defines strict Pydantic settings and
   comparison policy.
-* [Adapter](src/extractly/adapter.py) maps CU wire dictionaries to canonical
+* [CU adapter](src/extractly/cu/adapter.py) maps CU wire dictionaries to canonical
   extraction and evidence records.
+* [Ground-truth drafts](src/extractly/cu/ground_truth.py) create editable
+  canonical dictionaries for independent source review using the same
+  [CU parser](src/extractly/cu/cu_result_parser.py) as the adapter.
 * [Evaluators](src/extractly/evaluators.py) implement schema checks and typed,
   occurrence-aware extraction metrics.
+* [Execution runners](src/extractly/eval_runner/base.py) define an abstract
+  execution boundary with [typed requests and results](src/extractly/eval_runner/types.py).
+  The [Foundry runner](src/extractly/eval_runner/foundry.py) calls the standard
+  SDK evaluate function. Both workflows require an explicit runner instance.
 * [Offline evaluation](src/extractly/offline.py) owns gold-based configuration,
   preparation, scoring, and pooled occurrence metrics.
 * [Online evaluation](src/extractly/online.py) owns reference-free configuration,
   preparation, semantic graders, and assessment decisions.
 * [Shared mechanics](src/extractly/_shared.py) handles dataset serialization,
-  Foundry execution/coverage checks, gates, and report provenance without a
+  runner dispatch/coverage checks, gates, and report provenance without a
   mode-switching orchestrator.
 * [Shared types](src/extractly/types.py) isolate open-ended JSON/provider boundary
   types. The package includes a PEP 561 marker.

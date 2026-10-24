@@ -10,6 +10,4 @@ from typing import Any
 from azure.ai.evaluation import AzureOpenAIGrader
 
 type JsonObject = dict[str, Any]
-type Evaluator = Callable[..., JsonObject]
-type EvaluationRunner = Callable[..., JsonObject]
-type FoundryEvaluator = Callable[..., Any] | AzureOpenAIGrader
+type Evaluator = Callable[..., JsonObject] | AzureOpenAIGrader

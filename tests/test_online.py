@@ -2,14 +2,13 @@
 
 import json
 from inspect import signature
-from pathlib import Path
-from typing import Any
 
 import pytest
 from pytest_mock import MockerFixture
 
 from extractly import ModelSettings, OnlineEvaluationConfig, OnlineEvaluator
-from extractly.types import EvaluationRunner, JsonObject
+from extractly.eval_runner import EvaluationRunner, FoundryEvaluationRunner, RunnerRequest, RunnerResult
+from extractly.types import JsonObject
 
 
 def test_given_online_api_when_inspected_then_no_gold_or_mode_switch() -> None:
@@ -18,16 +17,18 @@ def test_given_online_api_when_inspected_then_no_gold_or_mode_switch() -> None:
     assert "mode" not in signature(OnlineEvaluator.run).parameters
 
 
-def test_given_gold_in_batch_when_online_then_not_serialized(raw: JsonObject, local_runner: EvaluationRunner) -> None:
+def test_given_gold_in_batch_when_online_then_not_serialized(raw: JsonObject, local_runner: EvaluationRunner, mocker: MockerFixture) -> None:
     """Ignore batch reference labels completely, including in custom evaluator inputs."""
     inputs: list[JsonObject] = []
+    original_run = local_runner.run
 
-    def runner(**kwargs: Any) -> JsonObject:
+    def capture(request: RunnerRequest) -> RunnerResult:
         """Capture the actual evaluator dataset, not a proxy report field."""
-        inputs.extend(json.loads(line) for line in Path(kwargs["data"]).read_text(encoding="utf-8").splitlines())
-        return local_runner(**kwargs)
+        inputs.extend(json.loads(line) for line in request.data.read_text(encoding="utf-8").splitlines())
+        return original_run(request)
 
-    report = OnlineEvaluator(OnlineEvaluationConfig(), runner=runner).run([{"id": "d", "cu_result": raw, "ground_truth": {"PRIVATE_REFERENCE": True}}])
+    mocker.patch.object(local_runner, "run", side_effect=capture)
+    report = OnlineEvaluator(OnlineEvaluationConfig(), runner=local_runner).run([{"id": "d", "cu_result": raw, "ground_truth": {"PRIVATE_REFERENCE": True}}])
 
     assert all("ground_truth" not in item for item in inputs)
     assert "PRIVATE_REFERENCE" not in json.dumps(inputs)
@@ -52,15 +53,15 @@ def test_given_semantic_checks_when_run_then_independent_jobs_and_owned_credenti
     credential = mocker.Mock()
     groundedness = mocker.patch("extractly.online.GroundednessEvaluator", return_value=lambda **kwargs: {"groundedness": 5})
     graders = mocker.patch("extractly.online.AzureOpenAILabelGrader", return_value=lambda **kwargs: {"passed": True})
-    runner = mocker.Mock(side_effect=local_runner)
+    run = mocker.spy(local_runner, "run")
 
-    result = OnlineEvaluator(config, credential=credential, runner=runner).evaluate(raw, document_id="d")
+    result = OnlineEvaluator(config, credential=credential, runner=local_runner).evaluate(raw, document_id="d")
 
     assert groundedness.call_args.kwargs["credential"] is credential
     assert graders.call_count == 2
     assert graders.call_args.kwargs["credential"] is credential
     assert graders.call_args.kwargs["labels"] == ["supported", "unsupported", "conflicting", "missing", "ambiguous"]
-    assert runner.call_count == 3
+    assert run.call_count == 3
     assert result["review_recommendation"] == "uncalibrated"
     credential.close.assert_not_called()
 
@@ -119,7 +120,7 @@ def test_given_field_budget_when_exceeded_then_rejected(raw: JsonObject, local_r
 @pytest.mark.sdk
 def test_given_real_sdk_when_online_schema_only_then_no_reference_metrics(raw: JsonObject) -> None:
     """Exercise real local SDK execution without labels or model resources."""
-    report = OnlineEvaluator(OnlineEvaluationConfig()).evaluate(raw, document_id="synthetic-online-sdk")
+    report = OnlineEvaluator(OnlineEvaluationConfig(), runner=FoundryEvaluationRunner()).evaluate(raw, document_id="synthetic-online-sdk")
 
     assert report["metrics"]["schema.valid"] == 1
     assert not any(key.startswith("extraction.") for key in report["metrics"])

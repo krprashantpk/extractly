@@ -18,7 +18,7 @@ Optional text F1                        groundedness, labels, completeness
           |                                       |
 Pooled field/row/instance metrics         Reference-free assessment
           |                                       |
-          +--- shared Foundry execution, coverage checks,
+          +--- shared runner dispatch, coverage checks,
                score gates, and report provenance ---+
                                 |
                     Report returned to the caller
@@ -38,7 +38,11 @@ Pooled field/row/instance metrics         Reference-free assessment
   validates extraction counts, and computes pooled comparison metrics.
 * The online workflow prepares reference-free datasets, chooses semantic jobs,
   validates service decisions, and computes review recommendations.
-* Private shared functions handle temporary dataset serialization, SDK execution,
+* Execution runners implement `EvaluationRunner.run` with typed
+  `RunnerRequest` and `RunnerResult` objects. Both workflows require
+  explicit injection; `FoundryEvaluationRunner` delegates to the standard SDK
+  evaluate function without an implicit fallback in either workflow.
+* Private shared functions handle temporary dataset serialization, runner dispatch,
   generic output coverage, minimum gates, and report provenance. They do not
   choose a workflow or instantiate its evaluators.
 * Applications own input loading, report persistence, authentication, and error
@@ -52,7 +56,7 @@ single-document signature does not accept it.
 ## Ownership and failure contracts
 
 Library callers configure authentication, provider policies, custom evaluators,
-and optional runner functions. The library never closes caller-owned
+and required execution runner instances. The library never closes caller-owned
 dependencies, commits transactions, creates cloud resources, or reads an
 application's local settings.
 
