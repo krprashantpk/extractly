@@ -1,0 +1,21 @@
+{
+  "name": "extractly-online",
+  "model": {
+    "azure_endpoint": "https://YOUR-RESOURCE.openai.azure.com",
+    "azure_deployment": "YOUR-EVALUATOR-DEPLOYMENT",
+    "api_version": "2025-04-01-preview"
+  },
+  "groundedness": true,
+  "field_labels": true,
+  "completeness": true,
+  "fields": {
+    "/segments/*/fields/items/*/quantity": {
+      "kind": "decimal",
+      "required": true,
+      "description": "Quantity for this event, not a subtotal or another event."
+    }
+  },
+  "tables": {"/segments/*/fields/items": {"keys": ["eventId"]}},
+  "max_context_characters": 100000,
+  "max_fields_per_document": 500
+}

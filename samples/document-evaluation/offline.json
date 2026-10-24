@@ -1,0 +1,21 @@
+{
+  "name": "extractly-synthetic",
+  "tables": {
+    "/segments": {"keys": ["category", "pages"], "level": "instance"},
+    "/segments/*/fields/items": {"keys": ["eventId"]}
+  },
+  "fields": {
+    "/segments/*/fields/items/*/quantity": {
+      "kind": "decimal",
+      "required": true,
+      "absolute_tolerance": "0.01",
+      "description": "Quantity of this specific source event."
+    }
+  },
+  "extraction_schema": {
+    "type": "object",
+    "required": ["segments"],
+    "properties": {"segments": {"type": "array", "minItems": 1}}
+  },
+  "thresholds": {"schema.valid": 1.0, "extraction.micro_f1": 0.99}
+}
