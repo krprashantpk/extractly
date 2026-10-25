@@ -1,30 +1,66 @@
 """Provide synthetic CU fixtures and a controlled typed evaluation runner."""
 
 import json
+from datetime import date
+from decimal import Decimal
 
 import pytest
 
-from extractly import CUAdapter, EvaluationConfig, OfflineEvaluationConfig, OnlineEvaluationConfig
+from extractly import (
+    Comparison,
+    CUAdapter,
+    EvaluationConfig,
+    EvaluationModel,
+    OfflineEvaluationConfig,
+    OnlineEvaluationConfig,
+    TableRule,
+    field_comparator,
+)
 from extractly.eval_runner import EvaluationRunner, RunnerRequest, RunnerResult
 from extractly.types import JsonObject
 
 
+class Event(EvaluationModel):
+    """Declare scored event values and an explicit raw-quantity tolerance."""
+
+    eventId: str
+    quantity: Decimal
+    unit: str
+    date: date
+
+    @staticmethod
+    @field_comparator("quantity")
+    def within_ten_kilograms(expected: Decimal, actual: Decimal) -> Comparison:
+        """Compare quantities in the source's declared kilogram unit."""
+        return Comparison(expected == actual, abs(expected - actual) <= Decimal("10"))
+
+
+class Events(EvaluationModel):
+    """Select typed event rows within each canonical segment."""
+
+    items: list[Event]
+
+
 @pytest.fixture
 def config() -> EvaluationConfig:
-    """Return explicit row identity and typed quantity/date comparison policy."""
-    return EvaluationConfig.model_validate({
-        "tables": {
-            "/segments": {"keys": ["category", "pages"], "level": "instance"},
-            "/segments/*/fields/items": {"keys": ["eventId"]},
-        },
-        "fields": {
-            "/segments/*/fields/items/*/quantity": {
-                "kind": "decimal", "required": True, "absolute_tolerance": "0.01",
-                "unit_field": "unit", "unit_scales": {"kg": "0.001", "MT": "1"},
-            },
-            "/segments/*/fields/items/*/date": {"kind": "date", "required": True},
-        },
-    })
+    """Return explicit row identity and model-owned comparison policy."""
+    return EvaluationConfig(extraction_schema=Events, tables={"/segments": TableRule(keys=["category", "pages"], level="instance"), "/segments/*/fields/items": TableRule(keys=["eventId"])})
+
+
+@pytest.fixture
+def quantity_schema() -> type[EvaluationModel]:
+    """Select quantities alone for grading and workflow selection checks."""
+    class Quantity(EvaluationModel):
+        """Select a typed quantity without the row's context fields."""
+
+        quantity: Decimal
+
+    class Items(EvaluationModel):
+        """Apply quantity selection to every item occurrence."""
+
+        items: list[Quantity]
+
+    return Items
 
 
 @pytest.fixture

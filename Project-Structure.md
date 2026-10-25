@@ -22,6 +22,7 @@ Extractly/
 |-- src/extractly/
 |   |-- __init__.py
 |   |-- _shared.py
+|   |-- comparison.py
 |   |-- config.py
 |   |-- cu/
 |   |   |-- __init__.py
@@ -54,7 +55,9 @@ Extractly/
   workflows and configuration, the adapter, the ground-truth draft builder,
   and deterministic evaluators.
 * [Configuration](src/extractly/config.py) defines strict Pydantic settings and
-  comparison policy.
+  accepts a single extraction schema model.
+* [Comparison models](src/extractly/comparison.py) own field selection, validation,
+  and registered caller-defined comparisons through `EvaluationModel`.
 * [CU adapter](src/extractly/cu/adapter.py) maps CU wire dictionaries to canonical
   extraction and evidence records.
 * [Ground-truth drafts](src/extractly/cu/ground_truth.py) create editable

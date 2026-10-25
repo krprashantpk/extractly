@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import os
 import re
-from decimal import Decimal, InvalidOperation
 from typing import Literal
 from urllib.parse import urlsplit
 
 from azure.ai.evaluation import AzureOpenAIModelConfiguration
-from jsonschema.validators import validator_for
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_serializer, model_validator
 
+from .comparison import EvaluationModel, ModelContract
 from .types import JsonObject
 
 
@@ -27,45 +26,8 @@ def _validate_pointer(path: str) -> None:
         raise ValueError("Field/table paths must be nonempty JSON Pointer patterns with valid escapes")
 
 
-class FieldRule(Settings):
-    """Define typed comparison for a JSON Pointer pattern.
-
-    An asterisk addresses existing array occurrences, not undiscovered rows.
-    Numeric strings and unit conversions require explicit opt-in policy.
-    """
-
-    kind: Literal["exact", "decimal", "date", "text"] = "exact"
-    required: bool = False
-    description: str = ""
-    absolute_tolerance: str = "0"
-    relative_tolerance: str = "0"
-    date_format: str = "%Y-%m-%d"
-    unit_field: str | None = None
-    unit_scales: dict[str, str] = Field(default_factory=dict)
-    coerce_numeric_strings: bool = False
-
-    @model_validator(mode="after")
-    def finite_tolerances(self) -> FieldRule:
-        """Reject invalid decimal and unit policy before provider calls."""
-        try:
-            for value in (self.absolute_tolerance, self.relative_tolerance, *self.unit_scales.values()):
-                if not Decimal(value).is_finite() or Decimal(value) < 0:
-                    raise ValueError("Tolerances and conversion factors must be finite and nonnegative")
-            if any(Decimal(value) == 0 for value in self.unit_scales.values()):
-                raise ValueError("Unit conversion factors must be positive")
-        except InvalidOperation as exc:
-            raise ValueError("Invalid decimal comparison policy") from exc
-        if self.unit_scales and not self.unit_field:
-            raise ValueError("Unit conversion requires an explicit unit_field")
-        if self.unit_field and not self.unit_scales:
-            raise ValueError("unit_field requires explicit unit_scales")
-        if self.unit_field and self.unit_field.startswith("/"):
-            _validate_pointer(self.unit_field)
-        return self
-
-
 class TableRule(Settings):
-    """Align occurrences by independent keys or explicitly positional ordering."""
+    """Align occurrences by independent keys identifying array items (this enables comparsion by identity beyond positional order) or explicitly positional ordering."""
 
     keys: list[str] = Field(default_factory=list)
     level: Literal["row", "instance"] = "row"
@@ -122,41 +84,58 @@ class ModelSettings(Settings):
 class EvaluationConfig(Settings):
     """Share the extraction contract, context budget, and minimum-score gates.
 
+    extraction_schema is the single model declaration for field selection,
+    Pydantic validation, and registered comparison functions within each segment's
+    fields object. None evaluates all emitted fields using default equality.
+    Tables remain independent and can match using undeclared identity fields.
     Workflow-specific settings belong to OfflineEvaluationConfig or
     OnlineEvaluationConfig, not this reusable adapter/evaluator contract.
     """
 
     name: str = Field(default="extractly", min_length=1)
-    fields: dict[str, FieldRule] = Field(default_factory=dict)
+    extraction_schema: type[EvaluationModel] | None = None
     tables: dict[str, TableRule] = Field(default_factory=dict)
-    extraction_schema: JsonObject = Field(default_factory=dict)
     project: str | None = None
     thresholds: dict[str, float] = Field(default_factory=dict)
     max_context_characters: int = Field(default=100000, ge=1)
+    _model_contract: ModelContract | None = PrivateAttr(default=None)
+
+    @property
+    def model_contract(self) -> ModelContract | None:
+        """Return the compiled model policy without altering caller-owned values."""
+        return self._model_contract
+
+    @field_serializer("extraction_schema", when_used="json")
+    def serialize_extraction_schema(self, model: type[EvaluationModel] | None) -> JsonObject | None:
+        """Describe executable policy in JSON while retaining classes in Python dumps."""
+        return self._model_contract.describe() if model is not None and self._model_contract is not None else None
 
     @model_validator(mode="after")
     def consistent_policy(self) -> EvaluationConfig:
-        """Validate local schemas, pointers, and shared extraction policy."""
-        validator_for(self.extraction_schema).check_schema(self.extraction_schema)
-
-        def local_references(value: object) -> None:
-            """Disallow network resolution, including dynamic and recursive references."""
-            if isinstance(value, dict):
-                for key in ("$ref", "$dynamicRef", "$recursiveRef"):
-                    if key in value and (not isinstance(value[key], str) or not value[key].startswith("#")):
-                        raise ValueError("Schemas must use local references; remote fetching is not enabled")
-                for child in value.values():
-                    local_references(child)
-            elif isinstance(value, list):
-                for child in value:
-                    local_references(child)
-
-        local_references(self.extraction_schema)
-        for path in [*self.fields, *self.tables]:
+        """Compile the extraction model and validate table paths and score gates."""
+        self._model_contract = ModelContract.compile(self.extraction_schema) if self.extraction_schema is not None else None
+        for path in self.tables:
             _validate_pointer(path)
-        for path, rule in self.fields.items():
-            if rule.unit_field and rule.unit_field.count("*") > path.count("*"):
-                raise ValueError("A unit reference cannot introduce additional array wildcards")
         if any(not name.strip() for name in self.thresholds):
             raise ValueError("Threshold metric names must not be blank")
         return self
+
+    def selects_path(self, path: str, *, include_ancestors: bool = False) -> bool:
+        """Check selection without altering values used for identity or unit lookup.
+
+        Args:
+            path: Escaped JSON Pointer for an occurrence in the original document.
+            include_ancestors: Include containers that must be traversed to reach selected fields.
+
+        Returns:
+            Whether a selector covers this path or, when requested, a descendant; a selected container includes its descendants and an asterisk matches one path component.
+        """
+        selectors = list(self._model_contract.fields) if self._model_contract is not None else None
+        if selectors is None:
+            return True
+        parts = path.split("/")[1:] if path else []
+        for selector in selectors:
+            selected = selector.split("/")[1:]
+            if (include_ancestors or len(selected) <= len(parts)) and all(expected == "*" or expected == actual for expected, actual in zip(selected, parts, strict=False)):
+                return True
+        return False

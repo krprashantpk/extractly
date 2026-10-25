@@ -1,6 +1,7 @@
 """Evaluate Content Understanding extraction with Microsoft Foundry."""
 
-from .config import EvaluationConfig, FieldRule, ModelSettings, TableRule
+from .comparison import Comparison, EvaluationModel, field_comparator
+from .config import EvaluationConfig, ModelSettings, TableRule
 from .cu import CUAdapter, build_ground_truth
 from .eval_runner import EvaluationRunner, FoundryEvaluationRunner, RunnerRequest, RunnerResult
 from .evaluators import ExtractionEvaluator, SchemaEvaluator
@@ -11,10 +12,11 @@ __version__ = "0.1.0"
 
 __all__ = [
     "CUAdapter",
+    "Comparison",
     "EvaluationConfig",
+    "EvaluationModel",
     "EvaluationRunner",
     "ExtractionEvaluator",
-    "FieldRule",
     "FoundryEvaluationRunner",
     "ModelSettings",
     "OfflineEvaluationConfig",
@@ -27,4 +29,5 @@ __all__ = [
     "TableRule",
     "__version__",
     "build_ground_truth",
+    "field_comparator",
 ]

@@ -2,7 +2,7 @@
 
 import pytest
 
-from extractly import EvaluationConfig, FieldRule, ModelSettings, OfflineEvaluationConfig, OnlineEvaluationConfig
+from extractly import EvaluationConfig, EvaluationModel, ModelSettings, OfflineEvaluationConfig, OnlineEvaluationConfig
 from extractly.types import JsonObject
 
 
@@ -16,6 +16,16 @@ from extractly.types import JsonObject
     {"fields": {"quantity": {}}},
     {"fields": {"/bad~3name": {}}},
     {"fields": {"/segments//quantity": {}}},
+    {"evaluation_model": None},
+    {"tables": {"items": {}}},
+    {"tables": {"/bad~3name": {}}},
+    {"tables": {"/segments//items": {}}},
+    {"include_fields": []},
+    {"include_fields": ["quantity"]},
+    {"include_fields": ["/bad~3name"]},
+    {"include_fields": ["/items//quantity"]},
+    {"include_fields": ["/quantity", "/quantity"]},
+    {"include_fields": "/quantity"},
     {"tables": {"/items": {"keys": [""]}}},
     {"tables": {"/items": {"keys": ["id", "id"]}}},
     {"extraction_schema": {"$ref": "https://example.invalid/schema.json"}},
@@ -64,18 +74,10 @@ def test_given_separate_policies_when_loaded_then_only_common_contract_shared() 
     assert "model" in OnlineEvaluationConfig.model_fields
 
 
-@pytest.mark.parametrize("settings", [
-    {"absolute_tolerance": "-1"},
-    {"absolute_tolerance": "NaN"},
-    {"relative_tolerance": "not-decimal"},
-    {"unit_field": "unit"},
-    {"unit_scales": {"kg": "1"}},
-    {"unit_field": "unit", "unit_scales": {"kg": "0"}},
-])
-def test_given_invalid_decimal_policy_when_loaded_then_rejected(settings: JsonObject) -> None:
-    """Require finite tolerances and explicit positive unit factors."""
+def test_given_raw_json_schema_when_loaded_then_model_class_required() -> None:
+    """Reject a second schema language instead of maintaining competing policies."""
     with pytest.raises(ValueError):
-        FieldRule.model_validate(settings)
+        EvaluationConfig.model_validate({"extraction_schema": {"type": "object"}})
 
 
 @pytest.mark.parametrize("endpoint", [
@@ -106,3 +108,23 @@ def test_given_missing_key_environment_when_resolved_then_clear_error(monkeypatc
 
     with pytest.raises(ValueError, match="absent or empty"):
         model.configuration()
+
+
+@pytest.mark.parametrize(("path", "selected"), [("/segments/0/fields/items/0/quantity", True), ("/segments/0/fields/items/1/quantity", True), ("/segments/0/fields/items/0/name", False), ("/other/quantity", False)])
+def test_given_field_selection_when_matching_then_wildcards_cover_occurrences(path: str, selected: bool) -> None:
+    """Match selected occurrences rather than similarly named unrelated fields."""
+    class Quantity(EvaluationModel):
+        """Declare the selected item property."""
+
+        quantity: int
+
+    class Items(EvaluationModel):
+        """Apply item selection to every array occurrence."""
+
+        items: list[Quantity]
+
+    config = EvaluationConfig(extraction_schema=Items)
+
+    result = config.selects_path(path)
+
+    assert result is selected

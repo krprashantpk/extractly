@@ -44,17 +44,34 @@ It does not instantiate online graders or accept model/credential settings.
 
 ```python
 import json
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
-from extractly import FoundryEvaluationRunner, OfflineEvaluationConfig, OfflineEvaluator
+from extractly import EvaluationModel, OfflineEvaluationConfig, OfflineEvaluator
+from extractly.eval_runner import LocalRunner
+
+
+class LineItem(EvaluationModel):
+  """Select quantity and optional ISO delivery dates."""
+
+  quantity: Decimal
+  deliveryDate: date | None = None
+
+
+class DeliveryEvaluation(EvaluationModel):
+  """Declare scored fields and their validation in one place."""
+
+  deliveryMode: str
+  unit: str
+  lineItems: list[LineItem]
+
 
 sample = Path("samples") / "document-evaluation"
-config = OfflineEvaluationConfig.model_validate_json(
-    (sample / "offline.json").read_text(encoding="utf-8")
-)
+config = OfflineEvaluationConfig(extraction_schema=DeliveryEvaluation)
 document = json.loads((sample / "synthetic.jsonl").read_text(encoding="utf-8"))
 
-evaluator = OfflineEvaluator(config, runner=FoundryEvaluationRunner())
+evaluator = OfflineEvaluator(config, runner=LocalRunner())
 report = evaluator.evaluate(
     document["cu_result"],
     document_id=document["id"],
@@ -80,16 +97,15 @@ For schema-only assessment, no model or credentials are needed:
 ```python
 from extractly import FoundryEvaluationRunner, OnlineEvaluationConfig, OnlineEvaluator
 
-online = OnlineEvaluator(OnlineEvaluationConfig(), runner=FoundryEvaluationRunner())
+online = OnlineEvaluator(OnlineEvaluationConfig(extraction_schema=DeliveryEvaluation), runner=FoundryEvaluationRunner())
 online_report = online.evaluate(document["cu_result"], document_id=document["id"])
 ```
 
 For semantic checks, pass your application's configured credential:
 
 ```python
-online_config = OnlineEvaluationConfig.model_validate_json(
-    (sample / "online.json").read_text(encoding="utf-8")
-)
+online_settings = json.loads((sample / "online.json").read_text(encoding="utf-8"))
+online_config = OnlineEvaluationConfig.model_validate({**online_settings, "extraction_schema": DeliveryEvaluation})
 semantic_evaluator = OnlineEvaluator(online_config, runner=FoundryEvaluationRunner(), credential=credential)
 online_report = semantic_evaluator.evaluate(
     document["cu_result"], document_id=document["id"]
@@ -136,20 +152,25 @@ See the [separate Python samples](samples/document-evaluation/README.md).
 
 ## Comparison policy
 
-Configuration uses JSON Pointer patterns such as
-`/segments/*/fields/items/*/quantity`. An asterisk addresses existing array
-occurrences; it cannot invent omitted rows.
+`extraction_schema` accepts an `EvaluationModel` class describing each canonical
+segment's `fields` object. That one model supplies field selection, validation,
+and comparison. There is no separate field-rule configuration or path allowlist.
 
-* `fields` configures exact, decimal, date, or whitespace/Unicode-normalized text
-  comparison. Text normalization is opt-in and case-sensitive.
-* Decimal tolerances and unit conversions use explicit decimal strings.
-  Numeric strings are rejected unless `coerce_numeric_strings` is enabled.
-* `unit_field` references a sibling or absolute pointer. `unit_scales` maps every
-  accepted unit to a positive conversion factor. No missing unit is guessed.
+* Declared fields are scored; undeclared values and metadata are not scored.
+  Nested models and lists select nested occurrences without rewriting CU or gold.
+* Pydantic types, aliases, requiredness, and `Field` constraints validate inputs.
+  Standard Pydantic type conversion applies; use strict field types when needed.
+* Validated values use equality unless a registered `@field_comparator` supplies
+  domain-specific normalization, tolerances, or parsing. Methods have arbitrary
+  names and return `Comparison(exact, tolerant, reason)`.
+* Missing values are handled by the engine, not comparator callbacks. Defaults
+  never manufacture observed values. Invalid gold raises; invalid predictions
+  produce schema violations and remain visible in directional error counts.
 * `tables` aligns rows or document instances by independent identity keys,
   preserving duplicate occurrences. Empty `keys` selects positional comparison.
-* `extraction_schema` is JSON Schema over canonical values before comparison
-  normalization. Network schema references are not accepted.
+  `level` chooses row or document-instance detection metrics, not alignment.
+* Without an extraction model, the default is equality over all emitted values,
+  with no additional model-validation constraints.
 * `OnlineEvaluationConfig` owns `model`, `groundedness`, `field_labels`,
   `completeness`, grader instructions, and the field-count budget.
 * `OfflineEvaluationConfig` owns `text_f1`, optional text-overlap diagnostics,
@@ -174,6 +195,58 @@ Gold annotations use the adapter's canonical structure:
   ]
 }
 ```
+
+### Select fields to evaluate
+
+Keep complete CU results and gold annotations, then declare the fields that matter.
+Extend the line-item model above to add a caller-owned tolerance:
+
+```python
+from extractly import Comparison, field_comparator
+
+
+class TolerantLineItem(LineItem):
+    """Add quantity tolerance without a second configuration structure."""
+
+    @staticmethod
+    @field_comparator("quantity")
+    def close_enough(expected: Decimal, actual: Decimal) -> Comparison:
+        """Keep strict equality separate from relaxed agreement."""
+        return Comparison(expected == actual, abs(expected - actual) <= Decimal("0.1"))
+
+
+class TolerantDelivery(DeliveryEvaluation):
+    """Use the line-item comparison policy for every source row."""
+
+    lineItems: list[TolerantLineItem]
+
+config = OfflineEvaluationConfig(
+  extraction_schema=TolerantDelivery,
+  thresholds={"extraction.micro_f1": 0.95},
+)
+report = OfflineEvaluator(config, runner=LocalRunner()).run([document])
+```
+
+Missing, extra, or incorrect selected occurrences still count, including duplicate
+rows. Undeclared identity fields remain available to `tables` without being scored.
+Table paths use JSON Pointer escapes (`~1` for `/`, `~0` for `~`); `*` matches one
+array occurrence. Domain rules that need several values can register a comparator
+on a nested model field to compare the whole object as one scored value.
+
+For a non-ISO date format, declare a constrained string and parse it inside a
+registered comparator. The engine does not impose a date-string convention.
+Comparison callbacks are synchronous static methods accepting expected and actual
+values. Custom Pydantic transformation validators, recursive models, and ambiguous
+unions of nested containers are unsupported.
+
+Configuration JSON describes the model schema and comparator identities, but cannot
+reload executable Python classes. Python-mode configuration copies retain the model.
+Bump the model's `comparison_version` when its comparison policy changes so report
+configuration hashes distinguish policy revisions.
+
+Custom evaluators, optional text-F1 diagnostics, and document-wide online
+groundedness and completeness checks still receive the full extraction and remain
+independent. Selection never changes annotations, predictions, or evidence budgets.
 
 ### Draft ground truth from CU
 

@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from extractly import CUAdapter, EvaluationConfig
+from extractly import CUAdapter, EvaluationConfig, EvaluationModel
 from extractly.types import JsonObject
 
 
@@ -48,7 +48,7 @@ def test_given_field_grading_when_generated_then_confidence_does_not_anchor_prom
     assert "confidence" not in json.dumps(rows)
     assert all("/fields/" in row["field_path"] for row in rows)
     assert json.loads(quantity["row_context"])["eventId"] == "A"
-    assert json.loads(quantity["contract"]) == config.model_dump(mode="json", include={"fields", "tables"})
+    assert json.loads(quantity["contract"]) == config.model_dump(mode="json", include={"extraction_schema", "tables"})
 
 
 def test_given_unrouted_segment_when_prepared_then_occurrence_retained(config: EvaluationConfig) -> None:
@@ -130,3 +130,23 @@ def test_given_escaped_field_names_when_adapted_then_pointer_is_unambiguous() ->
 
     assert record["evidence"]["/segments/0/fields/a~1b~0c"]["content_path"] == "content-0"
     assert json.loads(record["response"])["segments"][0]["fields"] == {"a/b~c": 0, "flag": False}
+
+
+@pytest.mark.parametrize("missing_quantity", [False, True])
+def test_given_selected_fields_when_grading_then_only_selected_slots_consume_budget(missing_quantity: bool, config: EvaluationConfig, raw: JsonObject, quantity_schema: type[EvaluationModel]) -> None:
+    """Filter unrelated emitted/required fields without losing source context."""
+    config.extraction_schema = quantity_schema
+    first = raw["contents"][0]["fields"]["items"]["valueArray"][0]["valueObject"]
+    del first["date"]
+    if missing_quantity:
+        del first["quantity"]
+    adapter = CUAdapter(config)
+    prepared = adapter.prepare(raw, "source")
+
+    rows = adapter.field_rows(prepared, max_fields_per_document=2)
+    quantity = next(row for row in rows if row["field_path"] == "/segments/0/fields/items/0/quantity")
+
+    assert {row["field_path"] for row in rows} == {"/segments/0/fields/items/0/quantity", "/segments/0/fields/items/1/quantity"}
+    assert json.loads(quantity["contract"]) == config.model_dump(mode="json", include={"extraction_schema", "tables"})
+    assert json.loads(quantity["row_context"])["eventId"] == "A"
+    assert json.loads(quantity["response"]) == ({"presence": "absent"} if missing_quantity else {"value": 12000})

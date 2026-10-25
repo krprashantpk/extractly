@@ -121,11 +121,20 @@ class OfflineEvaluator:
         totals = [sum(row[f"outputs.extraction.{key}"] for row in result["rows"]) for key in ("tp", "fp", "fn")]
         metrics.update({f"extraction.micro_{key}": value for key, value in ratios(*totals).items()})
         field_counts: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0])
+        tolerant_counts: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0])
         for row in result["rows"]:
             for path, count in row["outputs.extraction.field_counts"].items():
                 field_counts[path] = [a + b for a, b in zip(field_counts[path], count, strict=True)]
+            if config.model_contract is not None:
+                for path, count in row["outputs.extraction.tolerant_field_counts"].items():
+                    tolerant_counts[path] = [a + b for a, b in zip(tolerant_counts[path], count, strict=True)]
         review_required = any(not row["outputs.schema.valid"] or row["outputs.extraction.fp"] or row["outputs.extraction.fn"] for row in result["rows"])
-        fields = {path: {"tp": count[0], "fp": count[1], "fn": count[2], **ratios(*count)} for path, count in field_counts.items()}
+        fields: JsonObject = {path: {"tp": count[0], "fp": count[1], "fn": count[2], **ratios(*count)} for path, count in field_counts.items()}
+        if config.model_contract is not None:
+            loose = [sum(count[index] for count in tolerant_counts.values()) for index in range(3)]
+            metrics.update({f"extraction.tolerant_micro_{key}": value for key, value in ratios(*loose).items()})
+            for path, count in tolerant_counts.items():
+                fields[path]["tolerant"] = {"tp": count[0], "fp": count[1], "fn": count[2], **ratios(*count)}
         report = build_report(config, results, metrics, workflow="offline", document_count=len(ids), review_required=review_required, fields=fields)
         logger.info("Completed offline evaluation '%s' of %d documents with gate status '%s'", config.name, len(ids), report["gate_status"])
         return report

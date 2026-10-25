@@ -23,6 +23,9 @@ def test_given_public_api_when_imported_then_independent_evaluators() -> None:
     assert "EvaluationFramework" not in extractly.__all__
     assert "OfflineEvaluator" in extractly.__all__
     assert "OnlineEvaluator" in extractly.__all__
+    assert "EvaluationModel" in extractly.__all__
+    assert "FieldRule" not in extractly.__all__
+    assert not hasattr(extractly, "FieldRule")
     assert "mode" not in signature(OfflineEvaluator.run).parameters
     assert "mode" not in signature(OnlineEvaluator.run).parameters
 

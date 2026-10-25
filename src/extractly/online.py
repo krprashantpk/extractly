@@ -162,7 +162,7 @@ class OnlineEvaluator:
                         record = adapter.prepare(document["cu_result"], document["id"])
                         if (config.groundedness or config.field_labels or config.completeness) and not any(text.strip() for text in record["markdown"].values()):
                             raise ValueError("Semantic evaluation requires actual document Markdown evidence")
-                        record["contract"] = config.model_dump_json(include={"fields", "tables"})
+                        record["contract"] = config.model_dump_json(include={"extraction_schema", "tables"})
                         if config.field_labels:
                             for row in adapter.field_rows(record, max_fields_per_document=config.max_fields_per_document):
                                 fields.write(json.dumps(row, ensure_ascii=False, allow_nan=False) + "\n")

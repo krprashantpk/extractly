@@ -6,17 +6,13 @@ Any is required for recursive values in caller-defined extraction schemas.
 from __future__ import annotations
 
 import json
-import re
-import unicodedata
 from collections import defaultdict, deque
-from datetime import UTC, datetime
-from decimal import Decimal, InvalidOperation, localcontext
 from typing import Any
 
-from jsonschema import FormatChecker
-from jsonschema.validators import validator_for
+from pydantic import ValidationError
 
-from .config import EvaluationConfig, FieldRule
+from .comparison import equal_values
+from .config import EvaluationConfig
 from .cu.cu_result_parser import MISSING, pointer, slots
 from .types import JsonObject
 
@@ -46,24 +42,17 @@ def ratios(tp: int, fp: int, fn: int) -> dict[str, float | None]:
 
 
 class SchemaEvaluator:
-    """Validate canonical shape and required field occurrences with JSON Schema."""
+    """Validate original canonical values using the declared extraction model."""
 
     def __init__(self, config: EvaluationConfig) -> None:
-        """Build a validator from caller-supplied schema and field policy."""
-        self.validator = validator_for(config.extraction_schema)(config.extraction_schema, format_checker=FormatChecker())
-        self.required = [pattern for pattern, rule in config.fields.items() if rule.required]
+        """Accept the caller's single extraction schema contract."""
+        self.config = config
 
     def __call__(self, *, response: str, **kwargs: object) -> JsonObject:
         """Return conformance, violation count, and escaped violation paths."""
         value = json.loads(response)
-        paths = []
-        for error in self.validator.iter_errors(value):
-            path = ""
-            for part in error.path:
-                path = pointer(path, str(part))
-            paths.append(path)
-        paths.extend(path for pattern in self.required for path, found in slots(value, pattern) if found is MISSING or found is None or found == "")
-        return {"valid": int(not paths), "violations": len(paths), "paths": sorted(set(paths))}
+        paths = self.config.model_contract.violation_paths(value) if self.config.model_contract is not None else []
+        return {"valid": int(not paths), "violations": len(paths), "paths": paths}
 
 
 class ExtractionEvaluator:
@@ -73,51 +62,23 @@ class ExtractionEvaluator:
         """Accept explicit normalization and independent identity rules."""
         self.config = config
 
-    @staticmethod
-    def _normalized(value: Any, rule: FieldRule, parent: Any, root: Any, path: str) -> Any:
-        """Normalize only when an explicit field policy permits it."""
-        if rule.kind == "decimal":
-            if isinstance(value, bool) or not isinstance(value, (int, float, str)):
-                raise ValueError("Expected a decimal quantity")
-            if isinstance(value, str) and not rule.coerce_numeric_strings:
-                raise ValueError("Numeric strings require an explicit coercion policy")
-            number = Decimal(str(value))
-            if not number.is_finite():
-                raise ValueError("Decimal values must be finite")
-            if rule.unit_field:
-                if rule.unit_field.startswith("/"):
-                    indices = iter(re.findall(r"/(\d+)(?=/|$)", path))
-                    reference = "/".join(next(indices) if part == "*" else part for part in rule.unit_field.split("/"))
-                    unit = slots(root, reference)[0][1]
-                else:
-                    unit = parent.get(rule.unit_field) if isinstance(parent, dict) else None
-                if not isinstance(unit, str) or unit not in rule.unit_scales:
-                    raise ValueError("Quantity unit has no declared conversion")
-                factor = Decimal(rule.unit_scales[unit])
-                with localcontext() as context:
-                    context.prec = max(28, len(number.as_tuple().digits) + len(factor.as_tuple().digits))
-                    number *= factor
-            return number
-        if rule.kind == "date":
-            if not isinstance(value, str):
-                raise ValueError("Expected a date string")
-            return datetime.strptime(value, rule.date_format).replace(tzinfo=UTC).date()
-        if rule.kind == "text":
-            if not isinstance(value, str):
-                raise ValueError("Expected text")
-            return " ".join(unicodedata.normalize("NFC", value).split())
-        return value
-
     def __call__(self, *, response: str, ground_truth: str, **kwargs: object) -> JsonObject:
         """Compare extraction against independent gold, preserving duplicate counts.
 
         Wrong nonempty values contribute both a false positive and a false
         negative. Invalid predictions count as errors; invalid gold raises.
         Category and page metadata affect exact match but not field F1.
+        With extraction_schema, only declared fields and their containing structure
+        affect scores and exact match; undeclared source values remain available
+        for row alignment and context.
         """
         predicted, expected = json.loads(response), json.loads(ground_truth)
+        contract = self.config.model_contract
+        if contract is not None:
+            contract.validate_gold(expected)
         counts: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0])
         tolerant: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0])
+        comparisons: JsonObject = {}
         structure = {"row": [0, 0, 0], "instance": [0, 0, 0]}
         exact = True
 
@@ -125,26 +86,48 @@ class ExtractionEvaluator:
             """Distinguish absence from valid zero and false values."""
             return value is not MISSING and value is not None and value != ""
 
-        def visit(
-            gold: Any,
-            prediction: Any,
-            path: str,
-            gp: Any = None,
-            pp: Any = None,
-            prediction_path: str = "",
-            pattern: str = "",
-        ) -> None:
+        def visit(gold: Any, prediction: Any, path: str, prediction_path: str = "", pattern: str = "") -> None:
             """Accumulate directional errors while independently aligning arrays."""
             nonlocal exact
+            if not self.config.selects_path(path, include_ancestors=True):
+                return
             exact = exact and ((gold is MISSING) == (prediction is MISSING))
+            if contract is not None and pattern in contract.fields:
+                field = contract.fields[pattern]
+                gold_present, prediction_present = present(gold), present(prediction)
+                equal = relaxed = not gold_present and not prediction_present and type(gold) is type(prediction)
+                reason = None
+                if gold_present:
+                    model_gold = field.validator.validate_python(gold)
+                if prediction_present:
+                    try:
+                        model_prediction = field.validator.validate_python(prediction)
+                    except ValidationError:
+                        equal = relaxed = False
+                        reason = "Prediction violates the field's Pydantic type or constraints"
+                    else:
+                        if gold_present:
+                            comparison = field.compare(model_gold, model_prediction)
+                            equal, relaxed, reason = comparison.exact, comparison.tolerant, comparison.reason
+                exact = exact and equal
+                for target, match in ((counts, equal), (tolerant, relaxed)):
+                    target[pattern][0] += int(gold_present and prediction_present and match)
+                    target[pattern][1] += int(prediction_present and not match)
+                    target[pattern][2] += int(gold_present and not match)
+                comparisons[path] = {
+                    "exact": equal, "tolerant": relaxed, "reason": reason,
+                    "status": "compared" if gold_present and prediction_present else "missing" if gold_present else "extra" if prediction_present else "absent",
+                    "prediction_path": prediction_path,
+                }
+                return
             if gold is not MISSING and prediction is not MISSING and type(gold) is not type(prediction) and (isinstance(gold, (dict, list)) or isinstance(prediction, (dict, list))):
-                visit(gold, MISSING, path, gp, pp, prediction_path, pattern)
-                visit(MISSING, prediction, path, gp, pp, prediction_path, pattern)
+                visit(gold, MISSING, path, prediction_path, pattern)
+                visit(MISSING, prediction, path, prediction_path, pattern)
                 return
             if isinstance(gold, dict) or isinstance(prediction, dict):
                 gs, ps = gold if isinstance(gold, dict) else {}, prediction if isinstance(prediction, dict) else {}
                 for key in sorted(gs.keys() | ps.keys()):
-                    visit(gs.get(key, MISSING), ps.get(key, MISSING), pointer(path, key), gs, ps, pointer(prediction_path, key), pointer(pattern, key))
+                    visit(gs.get(key, MISSING), ps.get(key, MISSING), pointer(path, key), pointer(prediction_path, key), pointer(pattern, key))
                 return
             if isinstance(gold, list) or isinstance(prediction, list):
                 gitems, pitems = gold if isinstance(gold, list) else [], prediction if isinstance(prediction, list) else []
@@ -178,6 +161,8 @@ class ExtractionEvaluator:
                     pairs = [(gitems[i] if i < len(gitems) else MISSING, pitems[i] if i < len(pitems) else MISSING, i, i) for i in range(max(len(gitems), len(pitems)))]
                 exact = exact and len(gitems) == len(pitems)
                 for g, p, gi, pi in pairs:
+                    if not self.config.selects_path(f"{path}/{gi}", include_ancestors=True):
+                        continue
                     if table:
                         count = structure[table.level]
                         count[0] += int(g is not MISSING and p is not MISSING)
@@ -185,22 +170,13 @@ class ExtractionEvaluator:
                         count[2] += int(p is MISSING)
                     visit(g, p, f"{path}/{gi}", prediction_path=f"{prediction_path}/{pi}", pattern=f"{pattern}/*")
                 return
-            rule = self.config.fields.get(pattern, FieldRule())
+            if not self.config.selects_path(path):
+                return
             g, p = present(gold), present(prediction)
             equal = relaxed = not g and not p and type(gold) is type(prediction)
-            if g:
-                normalized_gold = self._normalized(gold, rule, gp, expected, path)
             if g and p:
-                try:
-                    normalized_prediction = self._normalized(prediction, rule, pp, predicted, prediction_path)
-                    equal = normalized_gold == normalized_prediction and (isinstance(gold, bool) == isinstance(prediction, bool))
-                    relaxed = equal
-                    if rule.kind == "decimal":
-                        with localcontext() as context:
-                            context.prec = max(28, len(normalized_gold.as_tuple().digits) + len(normalized_prediction.as_tuple().digits) + len(Decimal(rule.relative_tolerance).as_tuple().digits))
-                            relaxed = abs(normalized_gold - normalized_prediction) <= max(Decimal(rule.absolute_tolerance), Decimal(rule.relative_tolerance) * abs(normalized_gold))
-                except (ValueError, TypeError, InvalidOperation):
-                    equal = relaxed = False
+                comparison = equal_values(gold, prediction)
+                equal, relaxed = comparison.exact, comparison.tolerant
             exact = exact and equal
             if path.startswith("/segments/") and "/fields/" not in path:
                 return
@@ -217,6 +193,8 @@ class ExtractionEvaluator:
             "exact_match": int(exact), "tolerant": ratios(*loose),
             "field_counts": dict(counts), "tolerant_field_counts": dict(tolerant),
         }
+        if contract is not None:
+            result["comparisons"] = comparisons
         for level, count in structure.items():
             result.update({f"{level}_{name}": value for name, value in ratios(*count).items()})
             result.update({f"{level}_{name}": value for name, value in zip(("tp", "fp", "fn"), count, strict=True)})
