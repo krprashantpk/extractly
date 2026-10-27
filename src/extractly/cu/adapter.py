@@ -60,7 +60,7 @@ class CUAdapter:
     def field_rows(self, record: JsonObject, *, max_fields_per_document: int = 2000) -> list[JsonObject]:
         """Include emitted leaves and required absences without exposing CU confidence.
 
-        extraction_schema selects graded slots before the field budget is checked.
+        extraction_model selects graded slots before the field budget is checked.
         Full response, row context, and evidence remain available for grounding.
         Unknown omitted rows require the separate completeness evaluator.
         The caller supplies the online field-grading budget explicitly.
@@ -83,16 +83,14 @@ class CUAdapter:
             elif "/fields/" in path:
                 emitted[path] = value
 
-        if self.config.model_contract is not None:
-            violations = set(self.config.model_contract.violation_paths(response))
-            for pattern in self.config.model_contract.fields:
+        if self.config.extraction_schema is not None:
+            violations = set(self.config.extraction_schema.violation_paths(response))
+            for pattern in self.config.extraction_schema.fields:
                 emitted.update((path, value) for path, value in slots(response, pattern) if value is not MISSING or path in violations)
         else:
             walk(response)
-        emitted = {path: value for path, value in emitted.items() if self.config.selects_path(path)}
         if len(emitted) > max_fields_per_document:
             raise ValueError("Document exceeds configured field-grading budget")
-        contract_fields = {"extraction_schema", "tables"}
 
         def scope(path: str) -> JsonObject:
             """Supply the field's row and document instance context."""
@@ -116,6 +114,6 @@ class CUAdapter:
             "response": json.dumps({"presence": "absent"} if value is MISSING else {"value": value}, ensure_ascii=False, allow_nan=False),
             "context": record["context"],
             "query": f"Assess only the contract slot {path}.",
-            "contract": self.config.model_dump_json(include=contract_fields),
+            "contract": self.config.model_dump_json(include={"extraction_model", "tables"}),
             **scope(path),
         } for path, value in emitted.items()]

@@ -29,6 +29,5 @@ def build_ground_truth(raw: Mapping[str, Any]) -> JsonObject:
         TypeError: Raw CU data has an unsupported type or contains non-JSON values.
         ValueError: CU content is malformed, the operation failed, or canonical values contain non-finite numbers.
     """
-    parsed = parse_cu_result(raw)
-    draft: JsonObject = json.loads(json.dumps(parsed.response, ensure_ascii=False, allow_nan=False))
+    draft: JsonObject = json.loads(json.dumps(parse_cu_result(raw).response, ensure_ascii=False, allow_nan=False))
     return draft

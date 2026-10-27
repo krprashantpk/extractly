@@ -27,22 +27,9 @@ def _validate_pointer(path: str) -> None:
 
 
 class TableRule(Settings):
-    """Align occurrences by independent keys identifying array items (this enables comparsion by identity beyond positional order) or explicitly positional ordering."""
+    """Select table-row or table-count metrics for positionally compared arrays."""
 
-    keys: list[str] = Field(default_factory=list)
-    level: Literal["row", "instance"] = "row"
-
-    @model_validator(mode="after")
-    def valid_keys(self) -> TableRule:
-        """Reject empty or wildcard row identities."""
-        if len(set(self.keys)) != len(self.keys):
-            raise ValueError("Table identity keys must be unique")
-        for key in self.keys:
-            if not key or "*" in key:
-                raise ValueError("Table identity keys must be nonempty and cannot contain wildcards")
-            if key.startswith("/"):
-                _validate_pointer(key)
-        return self
+    level: Literal["table_row", "table_count"] = "table_row"
 
 
 class ModelSettings(Settings):
@@ -84,36 +71,36 @@ class ModelSettings(Settings):
 class EvaluationConfig(Settings):
     """Share the extraction contract, context budget, and minimum-score gates.
 
-    extraction_schema is the single model declaration for field selection,
+    extraction_model is the single model declaration for field selection,
     Pydantic validation, and registered comparison functions within each segment's
     fields object. None evaluates all emitted fields using default equality.
-    Tables remain independent and can match using undeclared identity fields.
+    Tables select structural metrics; all arrays are compared in positional order.
     Workflow-specific settings belong to OfflineEvaluationConfig or
     OnlineEvaluationConfig, not this reusable adapter/evaluator contract.
     """
 
     name: str = Field(default="extractly", min_length=1)
-    extraction_schema: type[EvaluationModel] | None = None
+    extraction_model: type[EvaluationModel] | None = None
     tables: dict[str, TableRule] = Field(default_factory=dict)
     project: str | None = None
     thresholds: dict[str, float] = Field(default_factory=dict)
     max_context_characters: int = Field(default=100000, ge=1)
-    _model_contract: ModelContract | None = PrivateAttr(default=None)
+    _extraction_schema: ModelContract | None = PrivateAttr(default=None)
 
     @property
-    def model_contract(self) -> ModelContract | None:
+    def extraction_schema(self) -> ModelContract | None:
         """Return the compiled model policy without altering caller-owned values."""
-        return self._model_contract
+        return self._extraction_schema
 
-    @field_serializer("extraction_schema", when_used="json")
-    def serialize_extraction_schema(self, model: type[EvaluationModel] | None) -> JsonObject | None:
+    @field_serializer("extraction_model", when_used="json")
+    def serialize_extraction_model(self, model: type[EvaluationModel] | None) -> JsonObject | None:
         """Describe executable policy in JSON while retaining classes in Python dumps."""
-        return self._model_contract.describe() if model is not None and self._model_contract is not None else None
+        return self._extraction_schema.describe() if model is not None and self._extraction_schema is not None else None
 
     @model_validator(mode="after")
     def consistent_policy(self) -> EvaluationConfig:
         """Compile the extraction model and validate table paths and score gates."""
-        self._model_contract = ModelContract.compile(self.extraction_schema) if self.extraction_schema is not None else None
+        self._extraction_schema = ModelContract.compile(self.extraction_model) if self.extraction_model is not None else None
         for path in self.tables:
             _validate_pointer(path)
         if any(not name.strip() for name in self.thresholds):
@@ -121,7 +108,7 @@ class EvaluationConfig(Settings):
         return self
 
     def selects_path(self, path: str, *, include_ancestors: bool = False) -> bool:
-        """Check selection without altering values used for identity or unit lookup.
+        """Check selection without altering original source values.
 
         Args:
             path: Escaped JSON Pointer for an occurrence in the original document.
@@ -130,12 +117,11 @@ class EvaluationConfig(Settings):
         Returns:
             Whether a selector covers this path or, when requested, a descendant; a selected container includes its descendants and an asterisk matches one path component.
         """
-        selectors = list(self._model_contract.fields) if self._model_contract is not None else None
-        if selectors is None:
+        if self._extraction_schema is None:
             return True
         parts = path.split("/")[1:] if path else []
-        for selector in selectors:
-            selected = selector.split("/")[1:]
-            if (include_ancestors or len(selected) <= len(parts)) and all(expected == "*" or expected == actual for expected, actual in zip(selected, parts, strict=False)):
-                return True
-        return False
+        return any(
+            (include_ancestors or len(selected) <= len(parts)) and all(expected == "*" or expected == actual for expected, actual in zip(selected, parts, strict=False))
+            for selector in self._extraction_schema.fields
+            for selected in [selector.split("/")[1:]]
+        )

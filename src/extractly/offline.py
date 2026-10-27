@@ -75,7 +75,7 @@ class OfflineEvaluator:
             ground_truth: Independently annotated canonical extraction, never optional.
 
         Returns:
-            Schema results, typed occurrence metrics, field counts, gates, and provenance.
+            Run-level metrics, document_metrics with this document's ID and scores, field counts, gates, and provenance.
 
         Raises:
             TypeError: Raw CU data has an unsupported type.
@@ -91,7 +91,13 @@ class OfflineEvaluator:
         """Evaluate a nonempty batch of id, cu_result, and ground_truth records.
 
         Gold is required for every record. Undefined ratios remain null;
-        micro metrics pool occurrence counts rather than document averages.
+        pooled_field metrics combine occurrence counts, while mean_document
+        metrics retain the runner's average of defined per-document scores.
+        Run-level exact_match requires every document to match, while
+        document_exact_match_rate reports the fraction of matching documents.
+        The returned document_metrics list contains each document's ID and
+        evaluator-qualified scores without
+        source values, field comparisons, or validation paths.
         """
         config = OfflineEvaluationConfig.model_validate(self.config.model_dump())
         adapter = CUAdapter(config)
@@ -118,23 +124,17 @@ class OfflineEvaluator:
             _validate_extraction(result)
         results = {"documents": result}
         metrics = collect_metrics(results)
+        exact_matches = [row["outputs.extraction.exact_match"] for row in result["rows"]]
+        metrics["extraction.exact_match"] = int(all(value == 1 for value in exact_matches))
+        metrics["extraction.document_exact_match_rate"] = sum(exact_matches) / len(exact_matches)
         totals = [sum(row[f"outputs.extraction.{key}"] for row in result["rows"]) for key in ("tp", "fp", "fn")]
-        metrics.update({f"extraction.micro_{key}": value for key, value in ratios(*totals).items()})
+        metrics.update({f"extraction.pooled_field_{key}": value for key, value in ratios(*totals).items()})
         field_counts: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0])
-        tolerant_counts: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0])
         for row in result["rows"]:
             for path, count in row["outputs.extraction.field_counts"].items():
                 field_counts[path] = [a + b for a, b in zip(field_counts[path], count, strict=True)]
-            if config.model_contract is not None:
-                for path, count in row["outputs.extraction.tolerant_field_counts"].items():
-                    tolerant_counts[path] = [a + b for a, b in zip(tolerant_counts[path], count, strict=True)]
         review_required = any(not row["outputs.schema.valid"] or row["outputs.extraction.fp"] or row["outputs.extraction.fn"] for row in result["rows"])
         fields: JsonObject = {path: {"tp": count[0], "fp": count[1], "fn": count[2], **ratios(*count)} for path, count in field_counts.items()}
-        if config.model_contract is not None:
-            loose = [sum(count[index] for count in tolerant_counts.values()) for index in range(3)]
-            metrics.update({f"extraction.tolerant_micro_{key}": value for key, value in ratios(*loose).items()})
-            for path, count in tolerant_counts.items():
-                fields[path]["tolerant"] = {"tp": count[0], "fp": count[1], "fn": count[2], **ratios(*count)}
-        report = build_report(config, results, metrics, workflow="offline", document_count=len(ids), review_required=review_required, fields=fields)
+        report = build_report(config, metrics, workflow="offline", document_count=len(ids), review_required=review_required, fields=fields, results=results)
         logger.info("Completed offline evaluation '%s' of %d documents with gate status '%s'", config.name, len(ids), report["gate_status"])
         return report

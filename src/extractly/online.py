@@ -123,7 +123,7 @@ class OnlineEvaluator:
             document_id: Nonempty source identity.
 
         Returns:
-            Schema and configured semantic results, gates, and provenance without gold-based metrics.
+            Run-level metrics, document_metrics with this document's ID and configured scores, gates, and provenance without gold-based metrics.
 
         Raises:
             TypeError: Raw CU data has an unsupported type.
@@ -141,6 +141,8 @@ class OnlineEvaluator:
 
         Any ground_truth in incoming records is ignored and is never serialized
         into evaluator datasets. No offline extraction or text-F1 check is run.
+        The returned document_metrics list includes schema and configured
+        semantic scores by document, averaging field-row scores per document.
         """
         config = OnlineEvaluationConfig.model_validate(self.config.model_dump())
         adapter = CUAdapter(config)
@@ -162,7 +164,7 @@ class OnlineEvaluator:
                         record = adapter.prepare(document["cu_result"], document["id"])
                         if (config.groundedness or config.field_labels or config.completeness) and not any(text.strip() for text in record["markdown"].values()):
                             raise ValueError("Semantic evaluation requires actual document Markdown evidence")
-                        record["contract"] = config.model_dump_json(include={"extraction_schema", "tables"})
+                        record["contract"] = config.model_dump_json(include={"extraction_model", "tables"})
                         if config.field_labels:
                             for row in adapter.field_rows(record, max_fields_per_document=config.max_fields_per_document):
                                 fields.write(json.dumps(row, ensure_ascii=False, allow_nan=False) + "\n")
@@ -187,6 +189,6 @@ class OnlineEvaluator:
             or (config.groundedness and any(row["outputs.groundedness.groundedness"] < config.groundedness_threshold for row in results["documents"]["rows"]))
             or any(row[f"outputs.{grader}.passed"] is False for name, grader in (("fields", "field_label"), ("coverage", "coverage")) for row in results.get(name, {}).get("rows", []))
         )
-        report = build_report(config, results, collect_metrics(results), workflow="online", document_count=len(ids), review_required=review_required, fields={})
+        report = build_report(config, collect_metrics(results), workflow="online", document_count=len(ids), review_required=review_required, fields={}, results=results)
         logger.info("Completed online evaluation '%s' of %d documents with gate status '%s'", config.name, len(ids), report["gate_status"])
         return report

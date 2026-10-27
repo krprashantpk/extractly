@@ -12,30 +12,34 @@ from extractly.types import JsonObject
     {"max_context_characters": True},
     {"max_fields_per_document": 0},
     {"groundedness_threshold": 6},
-    {"thresholds": {"extraction.micro_f1": float("nan")}},
+    {"thresholds": {"extraction.pooled_field_f1": float("nan")}},
     {"fields": {"quantity": {}}},
-    {"fields": {"/bad~3name": {}}},
-    {"fields": {"/segments//quantity": {}}},
     {"evaluation_model": None},
     {"tables": {"items": {}}},
     {"tables": {"/bad~3name": {}}},
     {"tables": {"/segments//items": {}}},
     {"include_fields": []},
-    {"include_fields": ["quantity"]},
-    {"include_fields": ["/bad~3name"]},
-    {"include_fields": ["/items//quantity"]},
-    {"include_fields": ["/quantity", "/quantity"]},
-    {"include_fields": "/quantity"},
     {"tables": {"/items": {"keys": [""]}}},
     {"tables": {"/items": {"keys": ["id", "id"]}}},
-    {"extraction_schema": {"$ref": "https://example.invalid/schema.json"}},
-    {"extraction_schema": {"$dynamicRef": "https://example.invalid/schema.json"}},
-    {"extraction_schema": {"$recursiveRef": "https://example.invalid/schema.json"}},
+    {"tables": {"/items": {"keys": ["id"]}}},
+    {"tables": {"/items": {"level": "row"}}},
+    {"tables": {"/items": {"level": "instance"}}},
+    {"extraction_schema": {"type": "object"}},
+    {"extraction_model": {"type": "object"}},
 ])
 def test_given_invalid_policy_when_loaded_then_rejected(settings: JsonObject) -> None:
     """Reject typos, invalid pointers, remote schemas, and silent coercion."""
     with pytest.raises(ValueError):
         EvaluationConfig.model_validate(settings)
+
+
+@pytest.mark.parametrize("level", ["table_row", "table_count"])
+def test_given_table_metric_level_when_loaded_then_positional_policy(level: str) -> None:
+    """Accept only the renamed structural levels without an identity-key option."""
+    config = EvaluationConfig.model_validate({"tables": {"/items": {"level": level}}})
+
+    assert config.tables["/items"].level == level
+    assert "keys" not in type(config.tables["/items"]).model_fields
 
 
 @pytest.mark.parametrize("settings", [
@@ -72,12 +76,6 @@ def test_given_separate_policies_when_loaded_then_only_common_contract_shared() 
     assert "text_f1" not in OnlineEvaluationConfig.model_fields
     assert "text_f1" in OfflineEvaluationConfig.model_fields
     assert "model" in OnlineEvaluationConfig.model_fields
-
-
-def test_given_raw_json_schema_when_loaded_then_model_class_required() -> None:
-    """Reject a second schema language instead of maintaining competing policies."""
-    with pytest.raises(ValueError):
-        EvaluationConfig.model_validate({"extraction_schema": {"type": "object"}})
 
 
 @pytest.mark.parametrize("endpoint", [
@@ -123,8 +121,52 @@ def test_given_field_selection_when_matching_then_wildcards_cover_occurrences(pa
 
         items: list[Quantity]
 
-    config = EvaluationConfig(extraction_schema=Items)
+    config = EvaluationConfig(extraction_model=Items)
 
     result = config.selects_path(path)
 
     assert result is selected
+
+
+def test_given_extraction_model_when_configured_then_compiled_schema_exposed() -> None:
+    """Distinguish the supplied model from its private compiled evaluation policy."""
+    class Quantity(EvaluationModel):
+        """Declare the selected quantity."""
+
+        quantity: int
+
+    config = EvaluationConfig(extraction_model=Quantity)
+
+    schema = config.extraction_schema
+
+    assert config.extraction_model is Quantity
+    assert schema is not None
+    assert schema.model is Quantity
+    assert schema.schema == Quantity.model_json_schema(mode="validation")
+    assert config.model_dump()["extraction_model"] is Quantity
+    assert config.model_dump(mode="json")["extraction_model"] == schema.describe()
+    assert "extraction_schema" not in config.model_dump()
+    assert "_extraction_schema" not in config.model_dump()
+
+
+def test_given_changed_extraction_model_when_assigned_then_schema_recompiled() -> None:
+    """Rebuild or clear compiled selection whenever the supplied model changes."""
+    class Quantity(EvaluationModel):
+        """Declare a selected quantity."""
+
+        quantity: int
+
+    config = EvaluationConfig()
+    assert config.extraction_schema is None
+
+    config.extraction_model = Quantity
+
+    assert config.extraction_schema is not None
+    assert config.extraction_schema.model is Quantity
+    assert not config.selects_path("/segments/0/fields/unrelated")
+
+    config.extraction_model = None
+
+    assert config.extraction_schema is None
+    assert config.selects_path("/segments/0/fields/unrelated")
+    assert config.model_dump(mode="json")["extraction_model"] is None

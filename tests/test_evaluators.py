@@ -10,13 +10,13 @@ import pytest
 from pydantic import Field
 
 from extractly import (
-    Comparison,
     EvaluationConfig,
     EvaluationModel,
     ExtractionEvaluator,
     SchemaEvaluator,
     field_comparator,
 )
+from extractly.evaluators import ratios
 from extractly.types import JsonObject
 
 
@@ -37,11 +37,28 @@ def canonical(fields: JsonObject) -> str:
     return json.dumps({"segments": [{"fields": fields}]})
 
 
+@pytest.mark.parametrize(("tp", "fp", "fn", "expected"), [
+    (1, 2, 3, {"precision": 0.333, "recall": 0.25, "f1": 0.286}),
+    (187, 1, 1, {"precision": 0.995, "recall": 0.995, "f1": 0.995}),
+    (0, 0, 0, {"precision": None, "recall": None, "f1": None}),
+    (0, 1, 0, {"precision": 0.0, "recall": None, "f1": 0.0}),
+    (0, 0, 1, {"precision": None, "recall": 0.0, "f1": 0.0}),
+])
+def test_given_occurrence_counts_when_ratios_calculated_then_rounded_and_undefined_preserved(tp: int, fp: int, fn: int, expected: dict[str, float | None]) -> None:
+    """Round completed ratios without converting undefined scores to numbers."""
+    result = ratios(tp, fp, fn)
+
+    assert result == expected
+
+
 def test_given_identical_when_compared_then_exact_match(config: EvaluationConfig, record: JsonObject) -> None:
     """Keep field, row, and document agreement distinct."""
     result = ExtractionEvaluator(config)(response=record["response"], ground_truth=record["response"])
 
-    assert result["f1"] == result["exact_match"] == result["row_recall"] == 1
+    assert result["f1"] == result["exact_match"] == result["table_row_recall"] == result["table_count_recall"] == 1
+    assert result["table_row_tp"] == 2
+    assert result["table_count_tp"] == 1
+    assert not any(key.startswith(("row_", "instance_")) for key in result)
 
 
 def test_given_swapped_quantities_when_totals_balance_then_two_wrong_values(config: EvaluationConfig, record: JsonObject) -> None:
@@ -54,12 +71,15 @@ def test_given_swapped_quantities_when_totals_balance_then_two_wrong_values(conf
 
     assert result["field_counts"]["/segments/*/fields/items/*/quantity"] == [0, 2, 2]
     assert result["exact_match"] == 0
-    assert result["row_recall"] == 1
+    assert result["table_row_recall"] == 1
 
 
 @pytest.mark.parametrize(("operation", "fp", "fn"), [("delete", 0, 1), ("duplicate", 1, 0)])
-def test_given_missing_or_extra_row_when_compared_then_multiplicity_preserved(operation: str, fp: int, fn: int, config: EvaluationConfig, record: JsonObject) -> None:
-    """Keep duplicate and missing row occurrence counts."""
+@pytest.mark.parametrize("quantity_only", [False, True])
+def test_given_missing_or_extra_row_when_compared_then_multiplicity_preserved(operation: str, fp: int, fn: int, config: EvaluationConfig, record: JsonObject, quantity_only: bool) -> None:
+    """Keep duplicate and missing row counts with full or quantity-only selection."""
+    if quantity_only:
+        config.extraction_model = Items
     predicted = json.loads(record["response"])
     rows = predicted["segments"][0]["fields"]["items"]
     if operation == "delete":
@@ -70,32 +90,43 @@ def test_given_missing_or_extra_row_when_compared_then_multiplicity_preserved(op
     result = ExtractionEvaluator(config)(response=json.dumps(predicted), ground_truth=record["response"])
 
     assert result["field_counts"]["/segments/*/fields/items/*/quantity"][1:] == [fp, fn]
+    assert result["table_row_fp"] == fp
+    assert result["table_row_fn"] == fn
+    assert result["exact_match"] == 0
 
 
-def test_given_tolerance_when_compared_then_strict_exact_match_stays_false(config: EvaluationConfig, record: JsonObject) -> None:
-    """Do not let tolerant scores overwrite strict normalized comparison."""
+def test_given_allowed_variation_when_compared_then_document_matches(config: EvaluationConfig, record: JsonObject) -> None:
+    """Treat an allowed quantity difference as an ordinary accepted match."""
     predicted = json.loads(record["response"])
     predicted["segments"][0]["fields"]["items"][0]["quantity"] += 1
 
     result = ExtractionEvaluator(config)(response=json.dumps(predicted), ground_truth=record["response"])
 
-    assert result["tolerant"]["f1"] == 1
-    assert result["exact_match"] == 0
+    assert result["f1"] == result["exact_match"] == 1
 
 
-def test_given_reordered_rows_when_keys_match_then_not_false_error(config: EvaluationConfig, record: JsonObject) -> None:
-    """Match independent identities rather than row position."""
+@pytest.mark.parametrize("quantity_only", [False, True])
+def test_given_reordered_rows_when_compared_then_positional_errors(config: EvaluationConfig, record: JsonObject, quantity_only: bool) -> None:
+    """Reject reordered values even when source identities are unchanged."""
+    if quantity_only:
+        config.extraction_model = Items
     predicted = json.loads(record["response"])
     predicted["segments"][0]["fields"]["items"].reverse()
 
     result = ExtractionEvaluator(config)(response=json.dumps(predicted), ground_truth=record["response"])
 
-    assert result["exact_match"] == 1
+    assert result["f1"] < 1
+    assert result["exact_match"] == 0
+    assert result["table_row_tp"] == 2
+    assert result["table_row_fp"] == result["table_row_fn"] == 0
+    assert result["field_counts"]["/segments/*/fields/items/*/quantity"] == [0, 2, 2]
+    if quantity_only:
+        assert set(result["field_counts"]) == {"/segments/*/fields/items/*/quantity"}
 
 
-def test_given_reordered_segments_when_units_differ_then_original_values_align(config: EvaluationConfig) -> None:
-    """Resolve values against each input's keyed original segment."""
-    config.extraction_schema = Quantity
+def test_given_reordered_segments_when_compared_then_positional_errors(config: EvaluationConfig) -> None:
+    """Reject reordered segments rather than matching their source identities."""
+    config.extraction_model = Quantity
     expected = {"segments": [
         {"category": "Events", "pages": [1, 1], "fields": {"unit": "kg", "quantity": 12000}},
         {"category": "Events", "pages": [2, 2], "fields": {"unit": "MT", "quantity": 12}},
@@ -103,13 +134,32 @@ def test_given_reordered_segments_when_units_differ_then_original_values_align(c
 
     result = ExtractionEvaluator(config)(response=json.dumps({"segments": expected["segments"][::-1]}), ground_truth=json.dumps(expected))
 
-    assert result["exact_match"] == 1
+    assert result["exact_match"] == 0
+    assert result["table_count_tp"] == 2
+    assert result["field_counts"]["/segments/*/fields/quantity"] == [0, 2, 2]
+
+
+@pytest.mark.parametrize(("operation", "fp", "fn"), [("delete", 0, 1), ("duplicate", 1, 0)])
+def test_given_missing_or_extra_table_when_compared_then_table_count_errors(operation: str, fp: int, fn: int, config: EvaluationConfig, record: JsonObject) -> None:
+    """Count absent and additional tables independently of their row values."""
+    predicted = json.loads(record["response"])
+    if operation == "delete":
+        predicted["segments"].pop()
+    else:
+        predicted["segments"].append(deepcopy(predicted["segments"][0]))
+
+    result = ExtractionEvaluator(config)(response=json.dumps(predicted), ground_truth=record["response"])
+
+    assert result["table_count_fp"] == fp
+    assert result["table_count_fn"] == fn
+    assert result["table_row_fp"] == 2 * fp
+    assert result["table_row_fn"] == 2 * fn
 
 
 @pytest.mark.parametrize("prediction", [True, "12", None, {"extra": 1}, "NaN"])
 def test_given_wrong_decimal_type_when_compared_then_directional_errors(prediction: object) -> None:
     """Reject booleans, implicit numeric strings, containers, and absence."""
-    config = EvaluationConfig(extraction_schema=Quantity)
+    config = EvaluationConfig(extraction_model=Quantity)
 
     result = ExtractionEvaluator(config)(response=canonical({"quantity": prediction}), ground_truth=canonical({"quantity": 12}))
 
@@ -139,13 +189,13 @@ def test_given_large_decimal_when_converted_then_rounding_does_not_hide_error() 
 
         quantity: Decimal
 
-    config = EvaluationConfig(extraction_schema=DecimalQuantity)
+    config = EvaluationConfig(extraction_model=DecimalQuantity)
     number = 123456789012345678901234567890123456789
 
     result = ExtractionEvaluator(config)(response=canonical({"quantity": number + 1}), ground_truth=canonical({"quantity": number}))
 
     assert result["exact_match"] == 0
-    assert result["tolerant"]["f1"] < 1
+    assert result["f1"] < 1
 
 
 def test_given_explicit_text_policy_when_compared_then_whitespace_and_unicode_normalized() -> None:
@@ -157,12 +207,12 @@ def test_given_explicit_text_policy_when_compared_then_whitespace_and_unicode_no
 
         @staticmethod
         @field_comparator("name")
-        def normalized_text(expected: str, actual: str) -> Comparison:
+        def normalized_text(expected: str, actual: str) -> bool:
             """Compare whitespace and canonical Unicode forms explicitly."""
             equal = " ".join(unicodedata.normalize("NFC", expected).split()) == " ".join(unicodedata.normalize("NFC", actual).split())
-            return Comparison(equal, equal)
+            return equal
 
-    config = EvaluationConfig(extraction_schema=Named)
+    config = EvaluationConfig(extraction_model=Named)
 
     result = ExtractionEvaluator(config)(response=canonical({"name": "  hello  world "}), ground_truth=canonical({"name": "hello world"}))
 
@@ -176,7 +226,7 @@ def test_given_invalid_gold_when_compared_then_not_prediction_failure() -> None:
 
         date: date
 
-    config = EvaluationConfig(extraction_schema=Dated)
+    config = EvaluationConfig(extraction_model=Dated)
 
     with pytest.raises(ValueError):
         ExtractionEvaluator(config)(response=canonical({"date": "2026-01-01"}), ground_truth=canonical({"date": "invalid"}))
@@ -200,7 +250,7 @@ def test_given_schema_format_when_invalid_then_violation() -> None:
 
         date: date
 
-    config = EvaluationConfig(extraction_schema=Dated)
+    config = EvaluationConfig(extraction_model=Dated)
 
     result = SchemaEvaluator(config)(response=canonical({"date": "not-a-date"}))
 
@@ -209,7 +259,7 @@ def test_given_schema_format_when_invalid_then_violation() -> None:
 
 def test_given_excluded_errors_when_selected_fields_match_then_perfect_selected_scores() -> None:
     """Exclude unrelated values, containers, and metadata from selected metrics."""
-    config = EvaluationConfig(extraction_schema=Quantity)
+    config = EvaluationConfig(extraction_model=Quantity)
     expected = {"segments": [{"category": "Detail", "pages": [1, 1], "fields": {"quantity": 10, "date": "invalid", "name": "expected", "unused": []}}]}
     predicted = {"segments": [{"category": "Other", "pages": [8, 9], "fields": {"quantity": 10, "date": 42, "name": {"extra": "wrong"}}}]}
 
@@ -222,25 +272,13 @@ def test_given_excluded_errors_when_selected_fields_match_then_perfect_selected_
 @pytest.mark.parametrize(("prediction", "fp", "fn"), [({"quantity": 11, "garbage": "ignored"}, 1, 1), ({"garbage": "ignored"}, 0, 1)])
 def test_given_selected_error_when_compared_then_directional_counts_remain(prediction: JsonObject, fp: int, fn: int) -> None:
     """Keep wrong and missing selected values visible without counting extras."""
-    config = EvaluationConfig(extraction_schema=Quantity)
+    config = EvaluationConfig(extraction_model=Quantity)
 
     result = ExtractionEvaluator(config)(response=canonical(prediction), ground_truth=canonical({"quantity": 10, "unused": "gold"}))
 
     assert (result["tp"], result["fp"], result["fn"]) == (0, fp, fn)
     assert result["exact_match"] == 0
     assert set(result["field_counts"]) == {"/segments/*/fields/quantity"}
-
-
-def test_given_selected_quantities_when_rows_reordered_then_excluded_keys_still_align(config: EvaluationConfig, record: JsonObject) -> None:
-    """Use independent row keys without scoring those excluded identity fields."""
-    config.extraction_schema = Items
-    predicted = json.loads(record["response"])
-    predicted["segments"][0]["fields"]["items"].reverse()
-
-    result = ExtractionEvaluator(config)(response=json.dumps(predicted), ground_truth=record["response"])
-
-    assert result["f1"] == result["exact_match"] == 1
-    assert set(result["field_counts"]) == {"/segments/*/fields/items/*/quantity"}
 
 
 def test_given_compound_quantity_when_compared_then_domain_unit_conversion_works() -> None:
@@ -258,13 +296,13 @@ def test_given_compound_quantity_when_compared_then_domain_unit_conversion_works
 
         @staticmethod
         @field_comparator("quantity")
-        def in_tonnes(expected: Measurement, actual: Measurement) -> Comparison:
+        def in_tonnes(expected: Measurement, actual: Measurement) -> bool:
             """Convert declared units in caller-owned policy, not the engine."""
             scales = {"kg": Decimal("0.001"), "MT": Decimal("1")}
             equal = expected.value * scales[expected.unit] == actual.value * scales[actual.unit]
-            return Comparison(equal, equal)
+            return equal
 
-    config = EvaluationConfig(extraction_schema=MeasuredQuantity)
+    config = EvaluationConfig(extraction_model=MeasuredQuantity)
 
     result = ExtractionEvaluator(config)(response=canonical({"quantity": {"value": 1000, "unit": "kg"}}), ground_truth=canonical({"quantity": {"value": 1, "unit": "MT"}}))
 
@@ -272,22 +310,15 @@ def test_given_compound_quantity_when_compared_then_domain_unit_conversion_works
     assert result["field_counts"] == {"/segments/*/fields/quantity": [1, 0, 0]}
 
 
-def test_given_excluded_required_field_when_missing_then_no_slot_violation() -> None:
-    """Undeclared fields cannot introduce a separate requiredness policy."""
-    config = EvaluationConfig(extraction_schema=Quantity)
+@pytest.mark.parametrize(("fields", "paths"), [({"quantity": 10}, []), ({"unused": 10}, ["/segments/0/fields/quantity"])])
+def test_given_selected_required_field_when_schema_checked_then_only_declared_slots_validated(fields: JsonObject, paths: list[str]) -> None:
+    """Validate selected required slots without inventing undeclared requirements."""
+    config = EvaluationConfig(extraction_model=Quantity)
 
-    result = SchemaEvaluator(config)(response=canonical({"quantity": 10}))
+    result = SchemaEvaluator(config)(response=canonical(fields))
 
-    assert result["valid"] == 1
-
-
-def test_given_selected_required_field_when_missing_then_slot_violation() -> None:
-    """Keep selected required omissions visible to schema quality gates."""
-    config = EvaluationConfig(extraction_schema=Quantity)
-
-    result = SchemaEvaluator(config)(response=canonical({"unused": 10}))
-
-    assert result["paths"] == ["/segments/0/fields/quantity"]
+    assert result["paths"] == paths
+    assert result["valid"] == int(not paths)
 
 
 def test_given_declared_required_fields_when_missing_then_contract_validated() -> None:
@@ -297,7 +328,7 @@ def test_given_declared_required_fields_when_missing_then_contract_validated() -
 
         name: str
 
-    config = EvaluationConfig(extraction_schema=NamedQuantity)
+    config = EvaluationConfig(extraction_model=NamedQuantity)
 
     result = SchemaEvaluator(config)(response=canonical({"quantity": 10}))
 
@@ -305,26 +336,9 @@ def test_given_declared_required_fields_when_missing_then_contract_validated() -
     assert config.selects_path("/segments/0/fields/name")
 
 
-@pytest.mark.parametrize(("operation", "fp", "fn"), [("delete", 0, 1), ("duplicate", 1, 0)])
-def test_given_selected_values_when_row_count_changes_then_occurrences_still_count(operation: str, fp: int, fn: int, config: EvaluationConfig, record: JsonObject) -> None:
-    """Do not let selection hide missing or duplicate rows with selected values."""
-    config.extraction_schema = Items
-    predicted = json.loads(record["response"])
-    rows = predicted["segments"][0]["fields"]["items"]
-    if operation == "delete":
-        rows.pop()
-    else:
-        rows.append(deepcopy(rows[0]))
-
-    result = ExtractionEvaluator(config)(response=json.dumps(predicted), ground_truth=record["response"])
-
-    assert result["field_counts"]["/segments/*/fields/items/*/quantity"][1:] == [fp, fn]
-    assert result["exact_match"] == 0
-
-
 def test_given_declared_list_when_other_row_added_then_extra_occurrence_scored() -> None:
     """Apply the model to every occurrence without a parallel path allowlist."""
-    config = EvaluationConfig(extraction_schema=Items)
+    config = EvaluationConfig(extraction_model=Items)
 
     result = ExtractionEvaluator(config)(response=canonical({"items": [{"quantity": 10}, {"quantity": 99}]}), ground_truth=canonical({"items": [{"quantity": 10}]}))
 
@@ -339,7 +353,7 @@ def test_given_selected_container_and_escaped_field_when_compared_then_descendan
 
         escaped: bool = Field(alias="a/b~c")
 
-    config = EvaluationConfig(extraction_schema=EscapedItems)
+    config = EvaluationConfig(extraction_model=EscapedItems)
 
     result = ExtractionEvaluator(config)(response=canonical({"a/b~c": False, "items": [{"quantity": 0}], "itemsExtra": 99}), ground_truth=canonical({"a/b~c": False, "items": [{"quantity": 0}], "itemsExtra": 1}))
 

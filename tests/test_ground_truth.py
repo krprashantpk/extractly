@@ -93,10 +93,14 @@ def test_given_oversized_context_when_drafted_then_no_evaluation_budget_applied(
     {"contents": [{"segments": [{"category": "Other"}]}]},
     {"status": "Failed", "result": {"contents": [{}]}},
 ])
-def test_given_malformed_cu_when_drafted_then_rejected(raw: JsonObject) -> None:
-    """Reject invalid CU rather than returning success-shaped annotations."""
+@pytest.mark.parametrize("draft", [False, True])
+def test_given_malformed_cu_when_parsed_then_rejected(raw: JsonObject, draft: bool) -> None:
+    """Reject malformed CU through both annotation and adaptation entry points."""
     with pytest.raises(ValueError):
-        build_ground_truth(raw)
+        if draft:
+            build_ground_truth(raw)
+        else:
+            CUAdapter(EvaluationConfig()).prepare(raw, "source")
 
 
 @pytest.mark.parametrize("raw", [None, [], "not-cu"])

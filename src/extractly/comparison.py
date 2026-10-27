@@ -22,39 +22,15 @@ from pydantic import (
 Parameters = ParamSpec("Parameters")
 
 
-@dataclass(frozen=True)
-class Comparison:
-    """Return strict and tolerant agreement from a field comparator.
-
-    Attributes:
-        exact: Whether validated values agree under the caller's strict comparison policy.
-        tolerant: Whether validated values agree under its relaxed policy; exact agreement must imply tolerant agreement.
-        reason: Optional explanation preserved in per-occurrence comparison results.
-    """
-
-    exact: bool
-    tolerant: bool
-    reason: str | None = None
-
-    def __post_init__(self) -> None:
-        """Reject malformed flags and inconsistent comparator results."""
-        if type(self.exact) is not bool or type(self.tolerant) is not bool:
-            raise TypeError("Comparison flags must be booleans")
-        if self.exact and not self.tolerant:
-            raise ValueError("Exact agreement must also be tolerant agreement")
-        if self.reason is not None and not isinstance(self.reason, str):
-            raise TypeError("Comparison reason must be a string or None")
+type Comparator = Callable[[object, object], bool]
 
 
-type Comparator = Callable[[object, object], Comparison]
-
-
-def field_comparator(*field_names: str) -> Callable[[Callable[Parameters, Comparison]], Callable[Parameters, Comparison]]:
+def field_comparator(*field_names: str) -> Callable[[Callable[Parameters, bool]], Callable[Parameters, bool]]:
     """Register a synchronous static comparator for one or more model fields.
 
     Place this decorator below staticmethod and directly above the function.
     Methods may have arbitrary names and must accept expected and actual values
-    positionally and return Comparison. Registration does not wrap the callable.
+    positionally and return bool. Registration does not wrap the callable.
     """
     if any(not isinstance(name, str) for name in field_names):
         raise TypeError("Comparator field names must be strings")
@@ -63,7 +39,7 @@ def field_comparator(*field_names: str) -> Callable[[Callable[Parameters, Compar
     if len(set(field_names)) != len(field_names):
         raise ValueError("Comparator field names must be unique")
 
-    def register(function: Callable[Parameters, Comparison]) -> Callable[Parameters, Comparison]:
+    def register(function: Callable[Parameters, bool]) -> Callable[Parameters, bool]:
         """Attach field bindings without changing the function signature."""
         if not callable(function) or isinstance(function, (staticmethod, classmethod)):
             raise TypeError("Place field_comparator directly above a comparison function, below staticmethod")
@@ -75,10 +51,9 @@ def field_comparator(*field_names: str) -> Callable[[Callable[Parameters, Compar
     return register
 
 
-def equal_values(expected: object, actual: object) -> Comparison:
+def equal_values(expected: object, actual: object) -> bool:
     """Compare normalized values without treating booleans as integers."""
-    equal = expected == actual and isinstance(expected, bool) == isinstance(actual, bool)
-    return Comparison(exact=equal, tolerant=equal)
+    return expected == actual and isinstance(expected, bool) == isinstance(actual, bool)
 
 
 class EvaluationModel(BaseModel):
@@ -105,9 +80,7 @@ class EvaluationModel(BaseModel):
         if not isinstance(cls.comparison_version, str) or not cls.comparison_version.strip():
             raise ValueError("comparison_version must be a nonempty string")
         comparators: dict[str, Comparator] = dict.fromkeys(cls.model_fields, equal_values)
-        effective_members: dict[str, object] = {}
-        for base in reversed(cls.__mro__):
-            effective_members.update(vars(base))
+        effective_members = {name: member for base in reversed(cls.__mro__) for name, member in vars(base).items()}
         for base in reversed(cls.__mro__):
             registered: set[str] = set()
             for name, member in vars(base).items():
@@ -140,11 +113,11 @@ class ModelField:
     comparator: Comparator
     owner: type[EvaluationModel]
 
-    def compare(self, expected: object, actual: object) -> Comparison:
+    def compare(self, expected: object, actual: object) -> bool:
         """Invoke the registered function and validate its result without catching caller errors."""
         result = self.comparator(expected, actual)
-        if not isinstance(result, Comparison):
-            raise TypeError("Field comparators must return Comparison")
+        if type(result) is not bool:
+            raise TypeError("Field comparators must return bool")
         return result
 
 

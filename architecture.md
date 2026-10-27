@@ -16,7 +16,7 @@ CUAdapter + SchemaEvaluator              CUAdapter + SchemaEvaluator
 ExtractionEvaluator                     Optional semantic jobs:
 Optional text F1                        groundedness, labels, completeness
           |                                       |
-Pooled field/row/instance metrics         Reference-free assessment
+Field, table_row, table_count metrics     Reference-free assessment
           |                                       |
           +--- shared runner dispatch, coverage checks,
                score gates, and report provenance ---+
@@ -33,7 +33,9 @@ Pooled field/row/instance metrics         Reference-free assessment
 * The adapter unwraps typed CU fields and retains evidence. It does not normalize
   values into application defaults.
 * Evaluators validate canonical schema and compute occurrence-aware comparison.
-  Matching uses independent identities rather than quantities being graded.
+  Arrays are compared only at corresponding positional indices, without keyed
+  alignment. Configured array levels select `table_row_*` or `table_count_*`
+  structural metrics independently of field-value correctness.
 * The offline workflow requires gold, prepares reference-bearing datasets,
   validates extraction counts, and computes pooled comparison metrics.
 * The online workflow prepares reference-free datasets, chooses semantic jobs,
@@ -66,9 +68,15 @@ cleanup, not a secure-erasure guarantee. Native SDK behavior may create its own
 telemetry or artifacts. Report retention belongs to the caller.
 
 Failed or incomplete provider output raises rather than producing success-shaped
-partial averages. Undefined positive-extraction metrics remain null. Strict and
-tolerant field scores are distinct. The SDK's per-document means remain separate
-from pooled occurrence-based micro metrics.
+partial averages. Undefined positive-extraction metrics remain null. Field
+comparators return one boolean; configured variation counts as a normal match
+in every extraction score, with no separate tolerant score set. Run-level extraction means use
+mean_document_precision, mean_document_recall, and mean_document_f1; pooled
+occurrence-based scores use pooled_field_precision, pooled_field_recall, and
+pooled_field_f1.
+Individual document scores retain precision, recall, and f1.
+Run-level extraction.exact_match is binary and requires all documents to match;
+extraction.document_exact_match_rate is the fraction of matching documents.
 
 ## Deliberate boundaries
 

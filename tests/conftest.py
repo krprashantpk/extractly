@@ -1,13 +1,11 @@
 """Provide synthetic CU fixtures and a controlled typed evaluation runner."""
 
-import json
 from datetime import date
 from decimal import Decimal
 
 import pytest
 
 from extractly import (
-    Comparison,
     CUAdapter,
     EvaluationConfig,
     EvaluationModel,
@@ -16,7 +14,7 @@ from extractly import (
     TableRule,
     field_comparator,
 )
-from extractly.eval_runner import EvaluationRunner, RunnerRequest, RunnerResult
+from extractly.eval_runner import EvaluationRunner, LocalRunner
 from extractly.types import JsonObject
 
 
@@ -30,9 +28,9 @@ class Event(EvaluationModel):
 
     @staticmethod
     @field_comparator("quantity")
-    def within_ten_kilograms(expected: Decimal, actual: Decimal) -> Comparison:
+    def within_ten_kilograms(expected: Decimal, actual: Decimal) -> bool:
         """Compare quantities in the source's declared kilogram unit."""
-        return Comparison(expected == actual, abs(expected - actual) <= Decimal("10"))
+        return abs(expected - actual) <= Decimal("10")
 
 
 class Events(EvaluationModel):
@@ -43,8 +41,8 @@ class Events(EvaluationModel):
 
 @pytest.fixture
 def config() -> EvaluationConfig:
-    """Return explicit row identity and model-owned comparison policy."""
-    return EvaluationConfig(extraction_schema=Events, tables={"/segments": TableRule(keys=["category", "pages"], level="instance"), "/segments/*/fields/items": TableRule(keys=["eventId"])})
+    """Return positional table metrics and model-owned comparison policy."""
+    return EvaluationConfig(extraction_model=Events, tables={"/segments": TableRule(level="table_count"), "/segments/*/fields/items": TableRule()})
 
 
 @pytest.fixture
@@ -98,27 +96,6 @@ def raw() -> JsonObject:
 def record(config: EvaluationConfig, raw: JsonObject) -> JsonObject:
     """Prepare the synthetic response used to isolate comparator behavior."""
     return CUAdapter(config).prepare(raw, "document-1")
-
-
-class LocalRunner(EvaluationRunner):
-    """Execute deterministic evaluator callables without model services."""
-
-    def run(self, request: RunnerRequest) -> RunnerResult:
-        """Return typed results while preserving the common runner contract."""
-        assert request.fail_on_evaluator_errors is True
-        records = [json.loads(line) for line in request.data.read_text(encoding="utf-8").splitlines()]
-        rows = []
-        numeric: dict[str, list[float]] = {}
-        for item in records:
-            row = {"inputs.id": item["id"], "inputs.ground_truth": item.get("ground_truth", "")}
-            for name, evaluator in request.evaluators.items():
-                assert callable(evaluator)
-                for key, value in evaluator(**item).items():
-                    row[f"outputs.{name}.{key}"] = value
-                    if isinstance(value, (int, float)) and not isinstance(value, bool):
-                        numeric.setdefault(f"{name}.{key}", []).append(value)
-            rows.append(row)
-        return RunnerResult(rows=rows, metrics={key: sum(values) / len(values) for key, values in numeric.items()})
 
 
 @pytest.fixture

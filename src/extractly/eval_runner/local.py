@@ -49,16 +49,15 @@ class LocalRunner(EvaluationRunner):
             raise ValueError("LocalRunner does not publish results; use FoundryEvaluationRunner for azure_ai_project")
         if not isinstance(request.fail_on_evaluator_errors, bool):
             raise TypeError("fail_on_evaluator_errors must be a bool")
-        callables: dict[str, Callable[..., JsonObject]] = {}
-        parameters: dict[str, set[str] | None] = {}
+        evaluators: dict[str, tuple[Callable[..., JsonObject], set[str] | None]] = {}
         for name, evaluator in request.evaluators.items():
             if not isinstance(name, str) or not name.strip():
                 raise TypeError("Evaluator names must be nonempty strings")
             if isinstance(evaluator, AzureOpenAIGrader) or not callable(evaluator):
                 raise TypeError("LocalRunner requires callable evaluators; use FoundryEvaluationRunner for AzureOpenAIGrader objects")
-            callables[name] = evaluator
             arguments = signature(evaluator).parameters.values()
-            parameters[name] = None if any(argument.kind is Parameter.VAR_KEYWORD for argument in arguments) else {argument.name for argument in arguments if argument.kind in (Parameter.POSITIONAL_OR_KEYWORD, Parameter.KEYWORD_ONLY)}
+            accepted = None if any(argument.kind is Parameter.VAR_KEYWORD for argument in arguments) else {argument.name for argument in arguments if argument.kind in (Parameter.POSITIONAL_OR_KEYWORD, Parameter.KEYWORD_ONLY)}
+            evaluators[name] = evaluator, accepted
         logger.info("Starting local evaluation '%s'", request.evaluation_name)
         rows: list[JsonObject] = []
         numeric: dict[str, list[float]] = {}
@@ -68,8 +67,7 @@ class LocalRunner(EvaluationRunner):
                 if not isinstance(item, dict):
                     raise ValueError("Every dataset record must be a JSON object")
                 row = {f"inputs.{key}": value for key, value in item.items()}
-                for name, evaluator in callables.items():
-                    accepted = parameters[name]
+                for name, (evaluator, accepted) in evaluators.items():
                     arguments_by_name = item if accepted is None else {key: value for key, value in item.items() if key in accepted}
                     try:
                         output = evaluator(**arguments_by_name)

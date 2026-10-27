@@ -117,7 +117,7 @@ def test_given_explicit_local_runner_when_offline_then_no_foundry_execution(raw:
 
     assert evaluator.runner is runner
     assert report["metrics"]["schema.valid"] == 1
-    assert report["metrics"]["extraction.micro_f1"] == 1
+    assert report["metrics"]["extraction.pooled_field_f1"] == 1
     if text_f1:
         assert report["metrics"]["text_f1.f1_score"] == 1
     provider.assert_not_called()
@@ -215,8 +215,8 @@ def test_given_untyped_result_when_run_then_rejected(raw: JsonObject, local_runn
         OnlineEvaluator(OnlineEvaluationConfig(), runner=local_runner).evaluate(raw, document_id="d")
 
 
-def test_given_result_metadata_when_reported_then_preserved(raw: JsonObject, local_runner: EvaluationRunner, mocker: MockerFixture) -> None:
-    """Retain provider metadata without allowing it to override typed results."""
+def test_given_result_metadata_when_reported_then_raw_results_omitted(raw: JsonObject, local_runner: EvaluationRunner, mocker: MockerFixture) -> None:
+    """Omit raw job results while retaining metrics from typed runner outputs."""
     original_run = local_runner.run
 
     def run_with_metadata(request: RunnerRequest) -> RunnerResult:
@@ -228,6 +228,6 @@ def test_given_result_metadata_when_reported_then_preserved(raw: JsonObject, loc
 
     report = OnlineEvaluator(OnlineEvaluationConfig(), runner=local_runner).evaluate(raw, document_id="d")
 
-    assert report["foundry"]["documents"]["studio_url"] == "synthetic"
-    assert report["foundry"]["documents"]["rows"][0]["inputs.id"] == "d"
+    assert "foundry" not in report
+    assert "studio_url" not in report
     assert report["metrics"]["schema.valid"] == 1

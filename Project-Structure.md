@@ -34,7 +34,11 @@ Extractly/
 |   |   |-- base.py
 |   |   |-- foundry.py
 |   |   `-- types.py
-|   |-- evaluators.py
+|   |-- evaluators/
+|   |   |-- __init__.py
+|   |   |-- _shared.py
+|   |   |-- extraction.py
+|   |   `-- schema.py
 |   |-- offline.py
 |   |-- online.py
 |   |-- py.typed
@@ -63,8 +67,10 @@ Extractly/
 * [Ground-truth drafts](src/extractly/cu/ground_truth.py) create editable
   canonical dictionaries for independent source review using the same
   [CU parser](src/extractly/cu/cu_result_parser.py) as the adapter.
-* [Evaluators](src/extractly/evaluators.py) implement schema checks and typed,
-  occurrence-aware extraction metrics.
+* [Evaluators](src/extractly/evaluators/__init__.py) expose separate modules for
+  [schema checks](src/extractly/evaluators/schema.py) and
+  [occurrence-aware extraction metrics](src/extractly/evaluators/extraction.py),
+  with shared precision, recall, and F1 calculations.
 * [Execution runners](src/extractly/eval_runner/base.py) define an abstract
   execution boundary with [typed requests and results](src/extractly/eval_runner/types.py).
   The [Foundry runner](src/extractly/eval_runner/foundry.py) calls the standard

@@ -14,7 +14,7 @@ publish results.
 * Check schema conformance without gold labels using `OnlineEvaluator`
 * Enable model-based groundedness, five-label field assessment, and independent
   completeness assessment when you have approved Azure resources
-* Measure field precision/recall/F1, exact match, and row/document-instance detection
+* Measure field precision/recall/F1, exact match, table-row detection, and table counts
 * Preserve source spans, confidence, Markdown, missing fields, and duplicate rows
 * Apply explicit release gates without treating model scores as calibrated risk
 
@@ -68,7 +68,7 @@ class DeliveryEvaluation(EvaluationModel):
 
 
 sample = Path("samples") / "document-evaluation"
-config = OfflineEvaluationConfig(extraction_schema=DeliveryEvaluation)
+config = OfflineEvaluationConfig(extraction_model=DeliveryEvaluation)
 document = json.loads((sample / "synthetic.jsonl").read_text(encoding="utf-8"))
 
 evaluator = OfflineEvaluator(config, runner=LocalRunner())
@@ -77,7 +77,7 @@ report = evaluator.evaluate(
     document_id=document["id"],
     ground_truth=document["ground_truth"],
 )
-assert report["metrics"]["extraction.micro_f1"] == 1.0
+assert report["metrics"]["extraction.pooled_field_f1"] == 1.0
 ```
 
 For batches, every record requires `id`, `cu_result`, and `ground_truth`:
@@ -97,7 +97,7 @@ For schema-only assessment, no model or credentials are needed:
 ```python
 from extractly import FoundryEvaluationRunner, OnlineEvaluationConfig, OnlineEvaluator
 
-online = OnlineEvaluator(OnlineEvaluationConfig(extraction_schema=DeliveryEvaluation), runner=FoundryEvaluationRunner())
+online = OnlineEvaluator(OnlineEvaluationConfig(extraction_model=DeliveryEvaluation), runner=FoundryEvaluationRunner())
 online_report = online.evaluate(document["cu_result"], document_id=document["id"])
 ```
 
@@ -105,7 +105,7 @@ For semantic checks, pass your application's configured credential:
 
 ```python
 online_settings = json.loads((sample / "online.json").read_text(encoding="utf-8"))
-online_config = OnlineEvaluationConfig.model_validate({**online_settings, "extraction_schema": DeliveryEvaluation})
+online_config = OnlineEvaluationConfig.model_validate({**online_settings, "extraction_model": DeliveryEvaluation})
 semantic_evaluator = OnlineEvaluator(online_config, runner=FoundryEvaluationRunner(), credential=credential)
 online_report = semantic_evaluator.evaluate(
     document["cu_result"], document_id=document["id"]
@@ -152,9 +152,11 @@ See the [separate Python samples](samples/document-evaluation/README.md).
 
 ## Comparison policy
 
-`extraction_schema` accepts an `EvaluationModel` class describing each canonical
+`extraction_model` accepts an `EvaluationModel` class describing each canonical
 segment's `fields` object. That one model supplies field selection, validation,
 and comparison. There is no separate field-rule configuration or path allowlist.
+The read-only `config.extraction_schema` property exposes its compiled evaluation
+contract; this is derived automatically and is not a configuration input.
 
 * Declared fields are scored; undeclared values and metadata are not scored.
   Nested models and lists select nested occurrences without rewriting CU or gold.
@@ -162,13 +164,18 @@ and comparison. There is no separate field-rule configuration or path allowlist.
   Standard Pydantic type conversion applies; use strict field types when needed.
 * Validated values use equality unless a registered `@field_comparator` supplies
   domain-specific normalization, tolerances, or parsing. Methods have arbitrary
-  names and return `Comparison(exact, tolerant, reason)`.
+  names and return exactly one `bool`: `True` for a match or `False` for a
+  mismatch. Allowed variation counts as a normal match in every extraction
+  score, including `exact_match`. Non-boolean results raise `TypeError`.
 * Missing values are handled by the engine, not comparator callbacks. Defaults
   never manufacture observed values. Invalid gold raises; invalid predictions
   produce schema violations and remain visible in directional error counts.
-* `tables` aligns rows or document instances by independent identity keys,
-  preserving duplicate occurrences. Empty `keys` selects positional comparison.
-  `level` chooses row or document-instance detection metrics, not alignment.
+* Arrays are always compared in positional order; reordered values are errors.
+  `tables` selects structural metrics for configured array paths, preserving
+  duplicate occurrences. `TableRule(level="table_row")` is the default and emits
+  `table_row_*` metrics. `TableRule(level="table_count")` emits `table_count_*`
+  metrics for arrays representing tables, such as `/segments`. Identity keys
+  and the previous `row` and `instance` level names are not accepted.
 * Without an extraction model, the default is equality over all emitted values,
   with no additional model-validation constraints.
 * `OnlineEvaluationConfig` owns `model`, `groundedness`, `field_labels`,
@@ -176,8 +183,16 @@ and comparison. There is no separate field-rule configuration or path allowlist.
 * `OfflineEvaluationConfig` owns `text_f1`, optional text-overlap diagnostics,
   not extraction F1. It rejects online-only settings rather than ignoring them.
 * `thresholds` maps metric names to minimum scores. Missing or undefined metrics
-  fail. Pooled `extraction.micro_f1` is computed from occurrence counts, not the
-  mean of per-document F1 values.
+  fail. Run-level `extraction.mean_document_precision`,
+  `extraction.mean_document_recall`, and `extraction.mean_document_f1` average
+  defined per-document scores. `extraction.pooled_field_precision`,
+  `extraction.pooled_field_recall`, and `extraction.pooled_field_f1` are computed
+  from summed field occurrence counts, not document averages. Individual
+  `document_metrics` entries keep `extraction.precision`, `extraction.recall`,
+  and `extraction.f1`.
+* Run-level `extraction.exact_match` is `1` only when every document matches,
+  otherwise `0`. `extraction.document_exact_match_rate` reports the fraction
+  of matching documents, rounded to three decimal places.
 * Context and field-count budgets reject oversize assessments rather than
   truncating evidence and pretending coverage is complete.
 * `project` optionally enables Foundry publishing.
@@ -202,27 +217,27 @@ Keep complete CU results and gold annotations, then declare the fields that matt
 Extend the line-item model above to add a caller-owned tolerance:
 
 ```python
-from extractly import Comparison, field_comparator
+from extractly import field_comparator
 
 
-class TolerantLineItem(LineItem):
+class QuantityLineItem(LineItem):
     """Add quantity tolerance without a second configuration structure."""
 
     @staticmethod
     @field_comparator("quantity")
-    def close_enough(expected: Decimal, actual: Decimal) -> Comparison:
-        """Keep strict equality separate from relaxed agreement."""
-        return Comparison(expected == actual, abs(expected - actual) <= Decimal("0.1"))
+    def close_enough(expected: Decimal, actual: Decimal) -> bool:
+      """Accept a quantity difference of at most 0.1 as a match."""
+      return abs(expected - actual) <= Decimal("0.1")
 
 
-class TolerantDelivery(DeliveryEvaluation):
+  class QuantityDelivery(DeliveryEvaluation):
     """Use the line-item comparison policy for every source row."""
 
-    lineItems: list[TolerantLineItem]
+    lineItems: list[QuantityLineItem]
 
 config = OfflineEvaluationConfig(
-  extraction_schema=TolerantDelivery,
-  thresholds={"extraction.micro_f1": 0.95},
+  extraction_model=QuantityDelivery,
+  thresholds={"extraction.pooled_field_f1": 0.95},
 )
 report = OfflineEvaluator(config, runner=LocalRunner()).run([document])
 ```
@@ -277,7 +292,8 @@ modules backed by a shared parser. Import the adapter with
 
 Wrong nonempty values count as both a false positive and a false negative.
 Category and page metadata affect exact match but do not inflate field F1.
-Tolerant scores remain separate from strict normalized exact match.
+Every field comparison has one boolean outcome under its configured policy;
+there is no separate tolerant score set.
 
 ## Reports and failure behavior
 

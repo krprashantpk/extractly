@@ -39,6 +39,56 @@ def test_given_missing_metric_when_run_then_gate_fails(evaluator: OfflineEvaluat
     assert report["gate_status"] == "fail"
 
 
+def test_given_documents_when_run_then_document_metrics_are_shared_and_private(evaluator: OfflineEvaluator | OnlineEvaluator, raw: JsonObject, record: JsonObject) -> None:
+    """Expose scores for each document in both workflows without raw diagnostics."""
+    def custom(*, response: str, **kwargs: object) -> JsonObject:
+        """Return scalar scores alongside private diagnostic details."""
+        return {"score": 0.75, "passed": False, "undefined": None, "reason": "private", "details": {"source": response}}
+
+    evaluator.evaluators["application"] = custom
+
+    report = evaluator.run([
+        {"id": identity, "cu_result": raw, "ground_truth": json.loads(record["response"])}
+        for identity in ("first", "second")
+    ])
+
+    assert [document["id"] for document in report["document_metrics"]] == ["first", "second"]
+    for document in report["document_metrics"]:
+        assert document["schema.valid"] == 1
+        assert document["schema.violations"] == 0
+        assert document["application.score"] == 0.75
+        assert document["application.passed"] is False
+        assert document["application.undefined"] is None
+        assert not {"schema.paths", "application.reason", "application.details", "extraction.comparisons", "extraction.field_counts"} & document.keys()
+    assert "private" not in json.dumps(report["document_metrics"], allow_nan=False)
+
+
+def test_given_fractional_metrics_when_reported_then_rounded_after_gate_checks(evaluator: OfflineEvaluator | OnlineEvaluator, raw: JsonObject, record: JsonObject, mocker: MockerFixture) -> None:
+    """Round reported scores without changing gate decisions or runner values."""
+    def custom(**kwargs: object) -> JsonObject:
+        """Return repeating decimals alongside integer and boolean metrics."""
+        return {"score": 187 / 188, "average_count": 187 / 6, "ratio": 1 / 6, "count": 7, "passed": False, "undefined": None}
+
+    evaluator.evaluators["application"] = custom
+    evaluator.config.thresholds = {"application.score": 0.995}
+    run = mocker.spy(evaluator.runner, "run")
+
+    report = evaluator.run([{"id": "d", "cu_result": raw, "ground_truth": json.loads(record["response"])}])
+
+    for metrics in (report["metrics"], report["document_metrics"][0]):
+        assert metrics["application.score"] == 0.995
+        assert metrics["application.average_count"] == 31.167
+        assert metrics["application.ratio"] == 0.167
+    document = report["document_metrics"][0]
+    assert type(document["application.count"]) is int
+    assert document["application.passed"] is False
+    assert document["application.undefined"] is None
+    assert report["gates"]["application.score"] is False
+    assert report["gate_status"] == "fail"
+    assert run.spy_return.metrics["application.score"] == 187 / 188
+    assert run.spy_return.rows[0]["outputs.application.score"] == 187 / 188
+
+
 @pytest.mark.parametrize("documents", [[], [{"id": ""}], [{"id": "d"}]])
 def test_given_invalid_batch_when_run_then_rejected(documents: list[JsonObject], evaluator: OfflineEvaluator | OnlineEvaluator) -> None:
     """Require nonempty identified source records in both workflows."""
