@@ -1,0 +1,216 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1320" viewBox="0 0 1800 1320" role="img" aria-labelledby="title description">
+  <title id="title">Extractly offline evaluation architecture for CI/CD</title>
+  <desc id="description">An application retrieves raw documents from a Storage Account or any endpoint and an independent Golden Dataset from Azure Storage, repository JSON, or another store, calls Azure Content Understanding, and evaluates the returned extraction with Extractly. Built-in SchemaEvaluator and ExtractionEvaluator checks run alongside supplied custom or Foundry evaluators; Foundry graders require the Foundry runner. A separate runtime block selects LocalRunner on a local server or CI agent, or FoundryEvaluationRunner for Foundry SDK orchestration and optional publishing. Reports expose numbered quality metrics, support application-owned JSON and database persistence, and drive a threshold-based release gate. Foundry optionally receives precomputed document scores through the configured runner.</desc>
+  <defs>
+    <style>
+      text { font-family: 'Segoe UI', 'Trebuchet MS', sans-serif; fill: #25313b; }
+      .eyebrow { font-size: 13px; font-weight: 700; letter-spacing: 0; fill: #52616c; }
+      .title { font-size: 34px; font-weight: 700; }
+      .subtitle { font-size: 17px; fill: #52616c; }
+      .lane-title { font-size: 17px; font-weight: 700; }
+      .heading { font-size: 18px; font-weight: 650; }
+      .body { font-size: 15px; fill: #52616c; }
+      .small { font-size: 13px; fill: #52616c; }
+      .mono { font-family: Consolas, monospace; font-size: 14px; fill: #354754; }
+      .label { font-size: 13px; font-weight: 600; fill: #52616c; }
+      .box { fill: #fff; stroke: #ccd6dc; stroke-width: 1.5; }
+      .flow { fill: none; stroke: #647984; stroke-width: 2; marker-end: url(#arrow); }
+      .optional { fill: none; stroke: #0078d4; stroke-width: 2; stroke-dasharray: 6 5; marker-end: url(#blue-arrow); }
+      .error { fill: none; stroke: #c24a4a; stroke-width: 2; stroke-dasharray: 6 5; marker-end: url(#red-arrow); }
+      .symbol { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 Z" fill="#647984"/></marker>
+    <marker id="blue-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 Z" fill="#0078d4"/></marker>
+    <marker id="red-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 Z" fill="#c24a4a"/></marker>
+    <symbol id="document" viewBox="0 0 24 24"><g class="symbol"><path d="M6 3h8l4 4v14H6z M14 3v5h4 M9 12h6 M9 16h6"/></g></symbol>
+    <symbol id="code" viewBox="0 0 24 24"><g class="symbol"><path d="m8 6-5 6 5 6 M16 6l5 6-5 6 M14 3l-4 18"/></g></symbol>
+    <symbol id="database" viewBox="0 0 24 24"><g class="symbol"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 4 16 4 16 0V5 M4 12c0 4 16 4 16 0"/></g></symbol>
+    <symbol id="pipeline" viewBox="0 0 24 24"><g class="symbol"><rect x="2" y="8" width="6" height="8" rx="1"/><rect x="16" y="2" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M8 12h4V5h4 M12 12v7h4"/></g></symbol>
+    <symbol id="policy" viewBox="0 0 24 24"><g class="symbol"><path d="M5 4h14v17H5z M9 4V2h6v2 M8 10l2 2 4-4 M8 16h8"/></g></symbol>
+    <symbol id="check" viewBox="0 0 24 24"><g class="symbol"><circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/></g></symbol>
+    <symbol id="cross" viewBox="0 0 24 24"><g class="symbol"><circle cx="12" cy="12" r="9"/><path d="m8 8 8 8 M16 8l-8 8"/></g></symbol>
+    <symbol id="chart" viewBox="0 0 24 24"><g class="symbol"><path d="M3 3v18h18 M7 17v-6 M12 17V6 M17 17V9"/></g></symbol>
+  </defs>
+
+  <rect width="1800" height="1320" fill="#ffffff"/>
+  <text x="32" y="40" class="eyebrow">APPLICATION INTEGRATION / CI/CD</text>
+  <text x="32" y="85" class="title">Offline extraction evaluation</text>
+  <text x="32" y="119" class="subtitle">Independent Golden Dataset + candidate extraction + measurable quality gates before release</text>
+
+  <rect x="32" y="160" width="340" height="1030" rx="6" fill="#f5f7f9" stroke="#dee5e9"/>
+  <rect x="400" y="160" width="510" height="1030" rx="6" fill="#f3f8fc" stroke="#d7e7f2"/>
+  <rect x="940" y="160" width="400" height="1030" rx="6" fill="#f5f9f7" stroke="#d7e7de"/>
+  <rect x="1370" y="160" width="398" height="1030" rx="6" fill="#faf8f3" stroke="#e9e2d5"/>
+  <text x="56" y="198" class="lane-title">01 / DATA AND EVALUATORS</text>
+  <text x="426" y="198" class="lane-title">02 / APPLICATION CI/CD JOB</text>
+  <text x="968" y="198" class="lane-title">03 / RESULTS AND DESTINATIONS</text>
+  <text x="1396" y="198" class="lane-title">04 / RELEASE DECISION</text>
+
+  <path class="flow" d="M655 319V385"/>
+  <path class="flow" d="M348 312H386V450H426"/>
+  <path class="flow" d="M655 515V580"/>
+  <path class="flow" d="M348 645H426"/>
+  <path class="flow" d="M655 705V770"/>
+  <path class="flow" d="M348 952H426"/>
+  <path class="flow" d="M655 970V1030"/>
+  <path class="flow" d="M884 1080H925V410H968"/>
+  <path class="flow" d="M1140 590V655"/>
+  <path class="flow" d="M1312 410H1434"/>
+  <path class="flow" d="M1569 315V340"/>
+  <path class="flow" d="M1569 510V600"/>
+  <path class="error" d="M1704 425H1750V846H1742"/>
+  <path class="optional" d="M884 1125H925V1096H968"/>
+  <path class="error" d="M655 1152V1170H1354V1090H1396"/>
+  <path class="error" d="M884 490H896V1170" style="marker-end:none"/>
+  <path class="error" d="M1569 1030V907"/>
+
+  <rect x="56" y="235" width="292" height="150" rx="6" class="box"/>
+  <use href="#document" x="76" y="259" width="34" height="34" color="#647984"/>
+  <text x="124" y="272" class="heading">Raw Documents</text>
+  <text x="124" y="299" class="body">PDFs, scans, images</text>
+  <use href="#database" x="76" y="317" width="24" height="24" color="#647984"/>
+  <text x="112" y="336" class="body">Azure Storage Account</text>
+  <use href="#code" x="76" y="349" width="24" height="24" color="#647984"/>
+  <text x="112" y="368" class="body">Any endpoint / API</text>
+
+  <rect x="56" y="402" width="292" height="402" rx="6" class="box"/>
+  <text x="76" y="435" class="heading">Golden Dataset</text>
+  <text x="76" y="460" class="small">Retrieve from one or more sources</text>
+  <image data-azure-icon="Storage-Accounts" href="data:image/svg+xml;base64,PHN2ZyBpZD0iZjJmMDQzNDktOGFlZS00NDEzLTg0YzktYTkwNTM2MTFiMzE5IiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOCIgaGVpZ2h0PSIxOCIgdmlld0JveD0iMCAwIDE4IDE4Ij48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImFkNGM0Zjk2LTA5YWEtNGY5MS1iYTEwLTVjYjhhZDUzMGY3NCIgeDE9IjkiIHkxPSIxNS44MyIgeDI9IjkiIHkyPSI1Ljc5IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjYjNiM2IzIiAvPjxzdG9wIG9mZnNldD0iMC4yNiIgc3RvcC1jb2xvcj0iI2MxYzFjMSIgLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNlNmU2ZTYiIC8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHRpdGxlPkljb24tc3RvcmFnZS04NjwvdGl0bGU+PHBhdGggZD0iTS41LDUuNzloMTdhMCwwLDAsMCwxLDAsMHY5LjQ4YS41Ny41NywwLDAsMS0uNTcuNTdIMS4wN2EuNTcuNTcsMCwwLDEtLjU3LS41N1Y1Ljc5QTAsMCwwLDAsMSwuNSw1Ljc5WiIgZmlsbD0idXJsKCNhZDRjNGY5Ni0wOWFhLTRmOTEtYmExMC01Y2I4YWQ1MzBmNzQpIiAvPjxwYXRoIGQ9Ik0xLjA3LDIuMTdIMTYuOTNhLjU3LjU3LDAsMCwxLC41Ny41N1Y1Ljc5YTAsMCwwLDAsMSwwLDBILjVhMCwwLDAsMCwxLDAsMFYyLjczQS41Ny41NywwLDAsMSwxLjA3LDIuMTdaIiBmaWxsPSIjMzdjMmIxIiAvPjxwYXRoIGQ9Ik0yLjgxLDYuODlIMTUuMThhLjI3LjI3LDAsMCwxLC4yNi4yN3YxLjRhLjI3LjI3LDAsMCwxLS4yNi4yN0gyLjgxYS4yNy4yNywwLDAsMS0uMjYtLjI3VjcuMTZBLjI3LjI3LDAsMCwxLDIuODEsNi44OVoiIGZpbGw9IiNmZmYiIC8+PHBhdGggZD0iTTIuODIsOS42OEgxNS4xOWEuMjcuMjcsMCwwLDEsLjI2LjI3djEuNDFhLjI3LjI3LDAsMCwxLS4yNi4yN0gyLjgyYS4yNy4yNywwLDAsMS0uMjYtLjI3VjEwQS4yNy4yNywwLDAsMSwyLjgyLDkuNjhaIiBmaWxsPSIjMzdjMmIxIiAvPjxwYXRoIGQ9Ik0yLjgyLDEyLjVIMTUuMTlhLjI3LjI3LDAsMCwxLC4yNi4yN3YxLjQxYS4yNy4yNywwLDAsMS0uMjYuMjdIMi44MmEuMjcuMjcsMCwwLDEtLjI2LS4yN1YxMi43N0EuMjcuMjcsMCwwLDEsMi44MiwxMi41WiIgZmlsbD0iIzI1ODI3NyIgLz48L3N2Zz4=" x="76" y="490" width="36" height="36"/>
+  <text x="124" y="505" class="heading">Azure Storage</text>
+  <text x="124" y="530" class="body">Blob / ADLS files</text>
+  <path d="M76 550H328" stroke="#e4e9ec"/>
+  <use href="#code" x="76" y="574" width="34" height="34" color="#647984"/>
+  <text x="124" y="589" class="heading">Repository JSON</text>
+  <text x="124" y="614" class="body">Files or in-code fixtures</text>
+  <path d="M76 634H328" stroke="#e4e9ec"/>
+  <use href="#database" x="76" y="658" width="34" height="34" color="#647984"/>
+  <text x="124" y="673" class="heading">Another data store</text>
+  <text x="124" y="698" class="body">SQL, Cosmos DB, other</text>
+  <rect x="76" y="731" width="252" height="50" rx="4" fill="#f2f6f8"/>
+  <text x="89" y="751" class="small">Reviewed against raw documents</text>
+  <text x="89" y="770" class="small">Not copied from candidate predictions</text>
+
+  <rect x="56" y="883" width="292" height="260" rx="6" class="box"/>
+  <use href="#policy" x="76" y="904" width="34" height="34" color="#647984"/>
+  <text x="124" y="923" class="heading">Evaluators</text>
+  <text x="76" y="962" class="body">SchemaEvaluator (built-in)</text>
+  <text x="76" y="990" class="body">ExtractionEvaluator (built-in)</text>
+  <text x="76" y="1018" class="body">Foundry evaluators / graders</text>
+  <text x="76" y="1046" class="body">Custom evaluator callables</text>
+  <text x="76" y="1075" class="small">Supply via evaluators=...</text>
+  <text x="76" y="1098" class="small">run() uses all supplied evaluators</text>
+  <text x="76" y="1121" class="small">Foundry graders: Foundry runner</text>
+
+  <rect x="426" y="235" width="458" height="84" rx="6" class="box"/>
+  <use href="#pipeline" x="447" y="255" width="36" height="36" color="#647984"/>
+  <text x="499" y="269" class="heading">Application evaluation job</text>
+  <text x="499" y="295" class="body">PR, release, or scheduled CI pipeline</text>
+  <text x="670" y="351" class="label">Candidate analyzer + configuration</text>
+
+  <rect x="426" y="385" width="458" height="130" rx="6" fill="#fff" stroke="#65a9dc" stroke-width="1.5"/>
+  <image data-azure-icon="Cognitive-Services" href="data:image/svg+xml;base64,PHN2ZyBpZD0iZjc4ZjUxMTUtYmU4OC00ZDQ0LWIzNGUtM2Y2ZWE3NDMxMjVjIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOCIgaGVpZ2h0PSIxOCIgdmlld0JveD0iMCAwIDE4IDE4Ij48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImI2YzQzYmQ5LWUzN2YtNDE5MS05M2MyLWQzYTdhODRjNTA1ZSIgeDE9IjkiIHkxPSIxOS4xMyIgeDI9IjkiIHkyPSItMC4yOSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzAwNzhkNCIgLz48c3RvcCBvZmZzZXQ9IjAuMTYiIHN0b3AtY29sb3I9IiMxMzgwZGEiIC8+PHN0b3Agb2Zmc2V0PSIwLjUzIiBzdG9wLWNvbG9yPSIjM2M5MWU1IiAvPjxzdG9wIG9mZnNldD0iMC44MiIgc3RvcC1jb2xvcj0iIzU1OWNlYyIgLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM1ZWEwZWYiIC8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHRpdGxlPkljb24tbWFjaGluZWxlYXJuaW5nLTE2MjwvdGl0bGU+PHBhdGggZD0iTTE4LDExLjM4QTQsNCwwLDAsMCwxNC40OSw3LjUsNS4xLDUuMSwwLDAsMCw5LjI0LDIuNjIsNS4yNSw1LjI1LDAsMCwwLDQuMjIsNiw0LjgsNC44LDAsMCwwLDAsMTAuNjdhNC45LDQuOSwwLDAsMCw1LjA3LDQuNzFsLjQ0LDBoOC4yMWEuNzguNzgsMCwwLDAsLjIyLDBBNC4xLDQuMSwwLDAsMCwxOCwxMS4zOFoiIGZpbGw9InVybCgjYjZjNDNiZDktZTM3Zi00MTkxLTkzYzItZDNhN2E4NGM1MDVlKSIgLz48cGF0aCBkPSJNNS40MiwxMC4zOUg0LjU0YTEuMDksMS4wOSwwLDEsMCwwLC40OWguODhhLjIuMiwwLDAsMSwuMi4ydjQuM2guNDl2LTQuM0EuNjkuNjksMCwwLDAsNS40MiwxMC4zOVptLTEuOTUuODhhLjY0LjY0LDAsMSwxLC42NC0uNjRBLjY0LjY0LDAsMCwxLDMuNDcsMTEuMjdaIiBmaWxsPSIjOWNlYmZmIiAvPjxwYXRoIGQ9Ik04Ljk0LDEwLjYxdi0xYS43LjcsMCwwLDAtLjctLjdINi42OWEuMi4yLDAsMCwxLS4yLS4yVjMuNGwtLjIzLjEyTDYsMy42NnY1YS42OS42OSwwLDAsMCwuNjkuNjlIOC4yNGEuMjEuMjEsMCwwLDEsLjIxLjIxdjFhMS4wOCwxLjA4LDAsMCwwLS44NSwxLjA2LDEuMDksMS4wOSwwLDEsMCwxLjM0LTEuMDZabS0uMjUsMS43aDBhLjY0LjY0LDAsMSwxLC42NC0uNjRBLjY0LjY0LDAsMCwxLDguNjksMTIuMzFaIiBmaWxsPSIjZjJmMmYyIiAvPjxwYXRoIGQ9Ik0xNC41Myw4LjVhMS4wOSwxLjA5LDAsMCwwLS4yNSwyLjE1di4yYS4yMS4yMSwwLDAsMS0uMjEuMjFoLTJWNy41NGEuNjkuNjksMCwwLDAtLjY5LS42OUgxMC4zNUExLjA4LDEuMDgsMCwwLDAsOS4yOSw2YTEuMDksMS4wOSwwLDEsMCwxLjA2LDEuMzRoMS4wN2EuMi4yLDAsMCwxLC4yLjJ2Ny44NGguNDlWMTEuNTVoMmEuNy43LDAsMCwwLC43LS43di0uMmExLjA5LDEuMDksMCwwLDAsLjg1LTEuMDZoMEExLjA5LDEuMDksMCwwLDAsMTQuNTMsOC41Wk05LjI5LDcuNzNoMGEuNjQuNjQsMCwxLDEsLjY0LS42NEEuNjQuNjQsMCwwLDEsOS4yOSw3LjczWm01LjI0LDIuNWgwYS42NC42NCwwLDEsMSwuNjMtLjY0QS42NC42NCwwLDAsMSwxNC41MywxMC4yM1oiIGZpbGw9IiM5Y2ViZmYiIC8+PC9zdmc+" x="447" y="414" width="46" height="46"/>
+  <text x="508" y="421" class="heading">Azure Content Understanding</text>
+  <text x="508" y="450" class="body">Application calls the extraction API</text>
+  <text x="447" y="490" class="mono">Raw Documents to saved CU result</text>
+  <text x="670" y="551" class="label">Raw extraction response</text>
+
+  <rect x="426" y="580" width="458" height="125" rx="6" class="box"/>
+  <use href="#document" x="447" y="601" width="34" height="34" color="#647984"/>
+  <text x="499" y="611" class="heading">Load Document, Golden Dataset, <tspan x="499" dy="23">and Config</tspan></text>
+  <text x="447" y="662" class="body">Pair CU results and gold; load evaluation config</text>
+  <text x="447" y="689" class="mono">{ id, cu_result, ground_truth }</text>
+  <text x="670" y="731" class="label">Document + Golden Dataset</text>
+  <text x="670" y="751" class="label">+ Config</text>
+
+  <rect x="426" y="770" width="458" height="200" rx="6" fill="#fff" stroke="#4b9974" stroke-width="2"/>
+  <use href="#code" x="447" y="793" width="36" height="36" color="#27815b"/>
+  <text x="499" y="808" class="heading">Extractly</text>
+  <text x="499" y="834" class="mono">OfflineEvaluator(config, runner=...)</text>
+  <text x="499" y="857" class="mono">evaluator.run(documents)</text>
+  <path d="M447 872H863" stroke="#deebe4"/>
+  <text x="447" y="898" class="body">CUAdapter canonicalizes saved predictions</text>
+  <text x="447" y="925" class="body">Run built-in + any supplied evaluators</text>
+  <text x="447" y="952" class="body">Pool counts, aggregate metrics, check gates</text>
+  <text x="670" y="1003" class="label">Explicit caller-owned runner</text>
+
+  <rect x="426" y="1030" width="458" height="122" rx="6" fill="#fff" stroke="#65a9dc" stroke-width="1.5"/>
+  <use href="#pipeline" x="447" y="1041" width="26" height="26" color="#0078d4"/>
+  <text x="486" y="1060" class="heading">Runtime / execution backend</text>
+  <path d="M655 1077V1139" stroke="#d7e7f2"/>
+  <text x="447" y="1093" class="body" style="font-weight:650">Local server / CI agent</text>
+  <text x="447" y="1120" class="mono">LocalRunner</text>
+  <text x="447" y="1143" class="small">Local process on your server</text>
+  <text x="674" y="1093" class="body" style="font-weight:650">Foundry SDK runtime</text>
+  <text x="674" y="1120" class="mono">FoundryEvaluationRunner</text>
+  <text x="674" y="1143" class="small">SDK + optional publishing</text>
+
+  <rect x="968" y="235" width="344" height="355" rx="6" fill="#fff" stroke="#4b9974" stroke-width="1.5"/>
+  <use href="#chart" x="988" y="257" width="34" height="34" color="#27815b"/>
+  <text x="1037" y="278" class="heading">Evaluation report</text>
+  <text x="988" y="318" class="body">1. Field precision / recall / F1</text>
+  <text x="988" y="350" class="body">2. TP / FP / FN occurrence counts</text>
+  <text x="988" y="382" class="body">3. Schema validity</text>
+  <text x="988" y="414" class="body">4. Exact match / document match rate</text>
+  <text x="988" y="446" class="body">5. Configured row and table metrics</text>
+  <path d="M988 469H1292" stroke="#deebe4"/>
+  <text x="988" y="499" class="body">Document scores + review flags</text>
+  <text x="988" y="529" class="body">Per-field summaries + config hash</text>
+  <text x="988" y="563" class="mono">metrics / gates / gate_status</text>
+  <text x="1155" y="627" class="label">Application-owned writer</text>
+
+  <rect x="968" y="655" width="344" height="330" rx="6" class="box"/>
+  <text x="988" y="689" class="heading">Persist Evaluation Report</text>
+  <text x="988" y="713" class="small">Choose the destinations your app needs</text>
+  <image data-azure-icon="Storage-Accounts" href="data:image/svg+xml;base64,PHN2ZyBpZD0iZjJmMDQzNDktOGFlZS00NDEzLTg0YzktYTkwNTM2MTFiMzE5IiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOCIgaGVpZ2h0PSIxOCIgdmlld0JveD0iMCAwIDE4IDE4Ij48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImFkNGM0Zjk2LTA5YWEtNGY5MS1iYTEwLTVjYjhhZDUzMGY3NCIgeDE9IjkiIHkxPSIxNS44MyIgeDI9IjkiIHkyPSI1Ljc5IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjYjNiM2IzIiAvPjxzdG9wIG9mZnNldD0iMC4yNiIgc3RvcC1jb2xvcj0iI2MxYzFjMSIgLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNlNmU2ZTYiIC8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHRpdGxlPkljb24tc3RvcmFnZS04NjwvdGl0bGU+PHBhdGggZD0iTS41LDUuNzloMTdhMCwwLDAsMCwxLDAsMHY5LjQ4YS41Ny41NywwLDAsMS0uNTcuNTdIMS4wN2EuNTcuNTcsMCwwLDEtLjU3LS41N1Y1Ljc5QTAsMCwwLDAsMSwuNSw1Ljc5WiIgZmlsbD0idXJsKCNhZDRjNGY5Ni0wOWFhLTRmOTEtYmExMC01Y2I4YWQ1MzBmNzQpIiAvPjxwYXRoIGQ9Ik0xLjA3LDIuMTdIMTYuOTNhLjU3LjU3LDAsMCwxLC41Ny41N1Y1Ljc5YTAsMCwwLDAsMSwwLDBILjVhMCwwLDAsMCwxLDAsMFYyLjczQS41Ny41NywwLDAsMSwxLjA3LDIuMTdaIiBmaWxsPSIjMzdjMmIxIiAvPjxwYXRoIGQ9Ik0yLjgxLDYuODlIMTUuMThhLjI3LjI3LDAsMCwxLC4yNi4yN3YxLjRhLjI3LjI3LDAsMCwxLS4yNi4yN0gyLjgxYS4yNy4yNywwLDAsMS0uMjYtLjI3VjcuMTZBLjI3LjI3LDAsMCwxLDIuODEsNi44OVoiIGZpbGw9IiNmZmYiIC8+PHBhdGggZD0iTTIuODIsOS42OEgxNS4xOWEuMjcuMjcsMCwwLDEsLjI2LjI3djEuNDFhLjI3LjI3LDAsMCwxLS4yNi4yN0gyLjgyYS4yNy4yNywwLDAsMS0uMjYtLjI3VjEwQS4yNy4yNywwLDAsMSwyLjgyLDkuNjhaIiBmaWxsPSIjMzdjMmIxIiAvPjxwYXRoIGQ9Ik0yLjgyLDEyLjVIMTUuMTlhLjI3LjI3LDAsMCwxLC4yNi4yN3YxLjQxYS4yNy4yNywwLDAsMS0uMjYuMjdIMi44MmEuMjcuMjcsMCwwLDEtLjI2LS4yN1YxMi43N0EuMjcuMjcsMCwwLDEsMi44MiwxMi41WiIgZmlsbD0iIzI1ODI3NyIgLz48L3N2Zz4=" x="988" y="738" width="34" height="34"/>
+  <text x="1037" y="752" class="heading">JSON / Blob Storage</text>
+  <text x="1037" y="775" class="small">File, CI artifact, or storage account</text>
+  <image data-azure-icon="SQL-Database" href="data:image/svg+xml;base64,PHN2ZyBpZD0iYTk2NzkyYjctY2UyOC00Y2EzLTk3NjctNGUwNjVlZjQ4MjBmIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOCIgaGVpZ2h0PSIxOCIgdmlld0JveD0iMCAwIDE4IDE4Ij48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImVmMTZiZjlkLWE4YjYtNDE4MS1iNmNkLTY2ZmM1MjAzZjk1NiIgeDE9IjIuNTkiIHkxPSIxMC4xNiIgeDI9IjE1LjQxIiB5Mj0iMTAuMTYiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBvZmZzZXQ9IjAiIHN0b3AtY29sb3I9IiMwMDViYTEiIC8+PHN0b3Agb2Zmc2V0PSIwLjA3IiBzdG9wLWNvbG9yPSIjMDA2MGE5IiAvPjxzdG9wIG9mZnNldD0iMC4zNiIgc3RvcC1jb2xvcj0iIzAwNzFjOCIgLz48c3RvcCBvZmZzZXQ9IjAuNTIiIHN0b3AtY29sb3I9IiMwMDc4ZDQiIC8+PHN0b3Agb2Zmc2V0PSIwLjY0IiBzdG9wLWNvbG9yPSIjMDA3NGNkIiAvPjxzdG9wIG9mZnNldD0iMC44MiIgc3RvcC1jb2xvcj0iIzAwNmFiYiIgLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMwMDViYTEiIC8+PC9saW5lYXJHcmFkaWVudD48cmFkaWFsR3JhZGllbnQgaWQ9ImJmMzg0NmMzLTRkNzQtNDc0My1hYjlhLWYzMzRjMjQ4YmQ5MiIgY3g9IjkuMzYiIGN5PSIxMC41NyIgcj0iNy4wNyIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iI2YyZjJmMiIgLz48c3RvcCBvZmZzZXQ9IjAuNTgiIHN0b3AtY29sb3I9IiNlZWUiIC8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZTZlNmU2IiAvPjwvcmFkaWFsR3JhZGllbnQ+PC9kZWZzPjx0aXRsZT5JY29uLWRhdGFiYXNlcy0xMzA8L3RpdGxlPjxwYXRoIGQ9Ik05LDUuMTRjLTMuNTQsMC02LjQxLTEtNi40MS0yLjMyVjE1LjE4YzAsMS4yNywyLjgyLDIuMyw2LjMyLDIuMzJIOWMzLjU0LDAsNi40MS0xLDYuNDEtMi4zMlYyLjgyQzE1LjQxLDQuMTEsMTIuNTQsNS4xNCw5LDUuMTRaIiBmaWxsPSJ1cmwoI2VmMTZiZjlkLWE4YjYtNDE4MS1iNmNkLTY2ZmM1MjAzZjk1NikiIC8+PHBhdGggZD0iTTE1LjQxLDIuODJjMCwxLjI5LTIuODcsMi4zMi02LjQxLDIuMzJzLTYuNDEtMS02LjQxLTIuMzJTNS40Ni41LDksLjVzNi40MSwxLDYuNDEsMi4zMiIgZmlsbD0iI2U4ZThlOCIgLz48cGF0aCBkPSJNMTMuOTIsMi42M2MwLC44Mi0yLjIxLDEuNDgtNC45MiwxLjQ4UzQuMDgsMy40NSw0LjA4LDIuNjMsNi4yOSwxLjE2LDksMS4xNnM0LjkyLjY2LDQuOTIsMS40NyIgZmlsbD0iIzUwZTZmZiIgLz48cGF0aCBkPSJNOSwzYTExLjU1LDExLjU1LDAsMCwwLTMuODkuNTdBMTEuNDIsMTEuNDIsMCwwLDAsOSw0LjExYTExLjE1LDExLjE1LDAsMCwwLDMuODktLjU4QTExLjg0LDExLjg0LDAsMCwwLDksM1oiIGZpbGw9IiMxOThhYjMiIC8+PHBhdGggZD0iTTEyLjksMTEuNFY4SDEydjQuMTNoMi40NlYxMS40Wk01Ljc2LDkuNzNhMS44MywxLjgzLDAsMCwxLS41MS0uMzEuNDQuNDQsMCwwLDEtLjEyLS4zMi4zNC4zNCwwLDAsMSwuMTUtLjMuNjguNjgsMCwwLDEsLjQyLS4xMiwxLjYyLDEuNjIsMCwwLDEsMSwuMjlWOC4xMWEyLjU4LDIuNTgsMCwwLDAtMS0uMTYsMS42NCwxLjY0LDAsMCwwLTEuMDkuMzQsMS4wOCwxLjA4LDAsMCwwLS40Mi44OWMwLC41MS4zMi45MSwxLDEuMjFhMi44OCwyLjg4LDAsMCwxLC42Mi4zNi40Mi40MiwwLDAsMSwuMTUuMzIuMzguMzgsMCwwLDEtLjE2LjMxLjgxLjgxLDAsMCwxLS40NS4xMSwxLjY2LDEuNjYsMCwwLDEtMS4wOS0uNDJWMTJhMi4xNywyLjE3LDAsMCwwLDEuMDcuMjQsMS44OCwxLjg4LDAsMCwwLDEuMTgtLjMzQTEuMDgsMS4wOCwwLDAsMCw2Ljg0LDExYTEuMDUsMS4wNSwwLDAsMC0uMjUtLjdBMi40MiwyLjQyLDAsMCwwLDUuNzYsOS43M1pNMTEsMTEuMzJhMi4zNCwyLjM0LDAsMCwwLC4zMy0xLjI2QTIuMzIsMi4zMiwwLDAsMCwxMSw5YTEuODEsMS44MSwwLDAsMC0uNy0uNzUsMiwyLDAsMCwwLTEtLjI2LDIuMTEsMi4xMSwwLDAsMC0xLjA4LjI3QTEuODYsMS44NiwwLDAsMCw3LjQ5LDlhMi40NiwyLjQ2LDAsMCwwLS4yNiwxLjE0LDIuMjYsMi4yNiwwLDAsMCwuMjQsMSwxLjc2LDEuNzYsMCwwLDAsLjY5Ljc0LDIuMDYsMi4wNiwwLDAsMCwxLC4zbC44NiwxaDEuMjFMMTAsMTIuMDhBMS43OSwxLjc5LDAsMCwwLDExLDExLjMyWk0xMCwxMS4wN2EuOTQuOTQsMCwwLDEtLjc2LjM1LjkyLjkyLDAsMCwxLS43Ni0uMzYsMS41MiwxLjUyLDAsMCwxLS4yOS0xLDEuNTMsMS41MywwLDAsMSwuMjktMSwxLDEsMCwwLDEsLjc4LS4zNy44Ny44NywwLDAsMSwuNzUuMzcsMS42MiwxLjYyLDAsMCwxLC4yNywxQTEuNDYsMS40NiwwLDAsMSwxMCwxMS4wN1oiIGZpbGw9InVybCgjYmYzODQ2YzMtNGQ3NC00NzQzLWFiOWEtZjMzNGMyNDhiZDkyKSIgLz48L3N2Zz4=" x="988" y="800" width="34" height="34"/>
+  <text x="1037" y="821" class="heading">Azure SQL / SQL database</text>
+  <image data-azure-icon="Azure-Cosmos-DB" href="data:image/svg+xml;base64,PHN2ZyBpZD0iYjA4OWNmY2EtMGRlMS00NTFjLWExY2EtNjY4MGVhNTBjYjRmIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOCIgaGVpZ2h0PSIxOCIgdmlld0JveD0iMCAwIDE4IDE4Ij48ZGVmcz48cmFkaWFsR3JhZGllbnQgaWQ9ImIyNWQwODM2LTk2NGEtNGM4NC04YzIwLTg1NWY2NmU4MzQ1ZSIgY3g9Ii0xMDUuMDA2IiBjeT0iLTEwLjQwOSIgcj0iNS45NTQiIGdyYWRpZW50VHJhbnNmb3JtPSJ0cmFuc2xhdGUoMTE3LjczOSAxOS42NDQpIHNjYWxlKDEuMDM2IDEuMDI3KSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMC4xODMiIHN0b3AtY29sb3I9IiM1ZWEwZWYiIC8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMDA3OGQ0IiAvPjwvcmFkaWFsR3JhZGllbnQ+PGNsaXBQYXRoIGlkPSJiMzZjN2Y1ZC0yZWYxLTQ3NjAtOGEyNS1lZWI5NjYxZjRlNDciPjxwYXRoIGQ9Ik0xNC45NjksNy41M0E2LjEzNyw2LjEzNywwLDEsMSw3LjU3NCwyLjk4Nyw2LjEzNyw2LjEzNywwLDAsMSwxNC45NjksNy41M1oiIGZpbGw9Im5vbmUiIC8+PC9jbGlwUGF0aD48L2RlZnM+PHRpdGxlPkljb24tZGF0YWJhc2VzLTEyMTwvdGl0bGU+PHBhdGggZD0iTTIuOTU0LDUuMjY2YS4xNzUuMTc1LDAsMCwxLS4xNzYtLjE3NmgwQTIuMDEyLDIuMDEyLDAsMCwwLC43NjksMy4wODFhLjE3Ni4xNzYsMCwwLDEtLjE3Ni0uMTc1aDBhLjE3Ni4xNzYsMCwwLDEsLjE3Ni0uMTc2QTIuMDEyLDIuMDEyLDAsMCwwLDIuNzc4LjcyLjE3NS4xNzUsMCwwLDEsMi45NTQuNTQ0aDBBLjE3NS4xNzUsMCwwLDEsMy4xMy43MmgwQTIuMDEyLDIuMDEyLDAsMCwwLDUuMTM5LDIuNzI5YS4xNzUuMTc1LDAsMCwxLC4xNzYuMTc2aDBhLjE3NS4xNzUsMCwwLDEtLjE3Ni4xNzZoMEEyLjAxMSwyLjAxMSwwLDAsMCwzLjEzLDUuMDkuMTc3LjE3NywwLDAsMSwyLjk1NCw1LjI2NloiIGZpbGw9IiM1MGU2ZmYiIC8+PHBhdGggZD0iTTE1LjYxMSwxNy40NTZhLjE0MS4xNDEsMCwwLDEtLjE0MS0uMTQxaDBhMS42MDksMS42MDksMCwwLDAtMS42MDctMS42MDcuMTQxLjE0MSwwLDAsMS0uMTQxLS4xNGgwYS4xNDEuMTQxLDAsMCwxLC4xNDEtLjE0MWgwYTEuNjA4LDEuNjA4LDAsMCwwLDEuNjA3LTEuNjA3LjE0MS4xNDEsMCwwLDEsLjE0MS0uMTQxaDBhLjE0MS4xNDEsMCwwLDEsLjE0MS4xNDFoMGExLjYwOCwxLjYwOCwwLDAsMCwxLjYwNywxLjYwNy4xNDEuMTQxLDAsMSwxLDAsLjI4MmgwYTEuNjA5LDEuNjA5LDAsMCwwLTEuNjA3LDEuNjA3QS4xNDEuMTQxLDAsMCwxLDE1LjYxMSwxNy40NTZaIiBmaWxsPSIjNTBlNmZmIiAvPjxnPjxwYXRoIGQ9Ik0xNC45NjksNy41M0E2LjEzNyw2LjEzNywwLDEsMSw3LjU3NCwyLjk4Nyw2LjEzNyw2LjEzNywwLDAsMSwxNC45NjksNy41M1oiIGZpbGw9InVybCgjYjI1ZDA4MzYtOTY0YS00Yzg0LThjMjAtODU1ZjY2ZTgzNDVlKSIgLz48ZyBjbGlwLXBhdGg9InVybCgjYjM2YzdmNWQtMmVmMS00NzYwLThhMjUtZWViOTY2MWY0ZTQ3KSI+PHBhdGggZD0iTTUuNzA5LDEzLjExNUExLjYzOCwxLjYzOCwwLDEsMCw1LjcxNCw5Ljg0LDEuMzA3LDEuMzA3LDAsMCwwLDUuNzIxLDkuNywxLjY1MSwxLjY1MSwwLDAsMCw0LjA2LDguMDY0SDIuODMyYTYuMjUxLDYuMjUxLDAsMCwwLDEuNTk1LDUuMDUxWiIgZmlsbD0iI2YyZjJmMiIgLz48cGF0aCBkPSJNMTUuMDQ1LDcuODE1YzAtLjAxNSwwLS4wMy0uMDA3LS4wNDRhNS45NzgsNS45NzgsMCwwLDAtMS40MDYtMi44OCwxLjgyNSwxLjgyNSwwLDAsMC0uMjg5LS4wOSwxLjgwNiwxLjgwNiwwLDAsMC0yLjMsMS42NjMsMiwyLDAsMCwwLS4yLS4wMTMsMS43MzcsMS43MzcsMCwwLDAtLjU4MSwzLjM3NCwxLjQ1MSwxLjQ1MSwwLDAsMCwuNTQxLjFoMi4wM0ExMy40NTMsMTMuNDUzLDAsMCwwLDE1LjA0NSw3LjgxNVoiIGZpbGw9IiNmMmYyZjIiIC8+PC9nPjwvZz48cGF0aCBkPSJNMTcuMTkxLDMuODMyYy0uNjI5LTEuMDQ3LTIuMS0xLjQ1NS00LjE1NS0xLjE0OWExNC42MDYsMTQuNjA2LDAsMCwwLTIuMDgyLjQ1Miw2LjQ1Niw2LjQ1NiwwLDAsMSwxLjUyOC43NjdjLjI0MS0uMDUzLjQ4My0uMTE2LjcxNS0uMTUxQTcuNDksNy40OSwwLDAsMSwxNC4zLDMuNjYyYTIuMTg4LDIuMTg4LDAsMCwxLDEuOTU5LjcyNWgwYy4zODMuNjM4LjA2LDEuNzI5LS44ODYsM2ExNi43MjMsMTYuNzIzLDAsMCwxLTQuNzQ5LDQuMDUxQTE2Ljc1OCwxNi43NTgsMCwwLDEsNC44LDEzLjdjLTEuNTY0LjIzNC0yLjY4MiwwLTMuMDY1LS42MzZzLS4wNi0xLjczLjg4Ni0yLjk5NWMuMTE3LS4xNTcuMTQ2LS4yMzQuMjc5LS4zOTJhNi4yNTIsNi4yNTIsMCwwLDEsLjAyNi0xLjYzQTExLjU1MiwxMS41NTIsMCwwLDAsMS43NTYsOS40MTlDLjUxNywxMS4wNzYuMTgxLDEyLjU2Ni44MDksMTMuNjEzYTMuMTY1LDMuMTY1LDAsMCwwLDIuOSwxLjI0OSw4LjQzNCw4LjQzNCwwLDAsMCwxLjI1MS0uMSwxNy44NTUsMTcuODU1LDAsMCwwLDYuMjE5LTIuNCwxNy44MDgsMTcuODA4LDAsMCwwLDUuMDYxLTQuMzMyQzE3LjQ4Myw2LjM2OSwxNy44MTksNC44OCwxNy4xOTEsMy44MzJaIiBmaWxsPSIjNTBlNmZmIiAvPjwvc3ZnPg==" x="988" y="857" width="34" height="34"/>
+  <text x="1037" y="878" class="heading">Azure Cosmos DB</text>
+  <use href="#database" x="988" y="917" width="34" height="34" color="#647984"/>
+  <text x="1037" y="938" class="heading">Any other database / store</text>
+
+  <rect x="968" y="1040" width="344" height="112" rx="6" fill="#fff" stroke="#65a9dc" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <image data-azure-icon="AI-Foundry" href="data:image/svg+xml;base64,PHN2ZyBpZD0idXVpZC02MjA1MDExNy02MzVlLTQyZWQtOTAyYi0yYmEyZWZkOWE3MjIiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiB2aWV3Qm94PSIwIDAgMTggMTgiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0idXVpZC01YTdiZDdmYS02OTM3LTQ0YmQtYTViYS1lMjNlZGRiYjZkMzUiIHgxPSIxMC45MSIgeTE9IjEzLjY2IiB4Mj0iMTMuNjIiIHkyPSIxMy42NiIgZ3JhZGllbnRUcmFuc2Zvcm09InRyYW5zbGF0ZSgwIDIwKSBzY2FsZSgxIC0xKSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzMwMmVjOSIgLz48c3RvcCBvZmZzZXQ9Ii4xMiIgc3RvcC1jb2xvcj0iIzE1MTY5OCIgLz48c3RvcCBvZmZzZXQ9Ii4yNSIgc3RvcC1jb2xvcj0iIzBhMGI3ZSIgLz48c3RvcCBvZmZzZXQ9Ii40MyIgc3RvcC1jb2xvcj0iIzA5MGM3ZiIgLz48c3RvcCBvZmZzZXQ9Ii41MSIgc3RvcC1jb2xvcj0iIzE0MTY5OCIgLz48c3RvcCBvZmZzZXQ9Ii42MSIgc3RvcC1jb2xvcj0iIzI4MmFjNCIgLz48c3RvcCBvZmZzZXQ9Ii43NyIgc3RvcC1jb2xvcj0iIzhlOGZmNCIgLz48c3RvcCBvZmZzZXQ9Ii44NSIgc3RvcC1jb2xvcj0iI2E3YTZmNyIgLz48c3RvcCBvZmZzZXQ9Ii45MSIgc3RvcC1jb2xvcj0iI2NhY2FmYiIgLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNmZmYiIC8+PC9saW5lYXJHcmFkaWVudD48bGluZWFyR3JhZGllbnQgaWQ9InV1aWQtYTliMmFjNzgtYmZmMC00NzVkLTg5ZGYtMmM5N2YyMTIyZjkzIiB4MT0iMTIuMjYiIHkxPSI4LjMyIiB4Mj0iMTIuMjYiIHkyPSIxOC4yMyIgZ3JhZGllbnRUcmFuc2Zvcm09InRyYW5zbGF0ZSgwIDIwKSBzY2FsZSgxIC0xKSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iLjAyIiBzdG9wLWNvbG9yPSIjMjAxYmE2IiAvPjxzdG9wIG9mZnNldD0iLjY0IiBzdG9wLWNvbG9yPSIjMmQyOWM3IiAvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzIwMWJhNiIgLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0idXVpZC0wM2IzYjcwYy0xYzhkLTRiM2YtOTkzNS1kOWRhMmIyMGRlMmYiIHgxPSIxNC4xOSIgeTE9IjguMjciIHgyPSIxNC4xOSIgeTI9IjE0LjQ3IiBncmFkaWVudFRyYW5zZm9ybT0idHJhbnNsYXRlKDAgMjApIHNjYWxlKDEgLTEpIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjMzUzMGMzIiAvPjxzdG9wIG9mZnNldD0iLjUiIHN0b3AtY29sb3I9IiM2ZDcxZDEiIC8+PHN0b3Agb2Zmc2V0PSIuOTciIHN0b3AtY29sb3I9IiNjMGJmZjUiIC8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZTNlNGZmIiAvPjwvbGluZWFyR3JhZGllbnQ+PGxpbmVhckdyYWRpZW50IGlkPSJ1dWlkLWNhYmM4ZWM5LTMyOTMtNDRiOC1hMzNiLTcwODIzZjU4M2IzMCIgeDE9IjYuNTEiIHkxPSIzIiB4Mj0iNi41MSIgeTI9IjE5LjE1IiBncmFkaWVudFRyYW5zZm9ybT0idHJhbnNsYXRlKDAgMjApIHNjYWxlKDEgLTEpIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjMzAyZWM5IiAvPjxzdG9wIG9mZnNldD0iLjQ1IiBzdG9wLWNvbG9yPSIjMzAyZWM5IiAvPjxzdG9wIG9mZnNldD0iLjk1IiBzdG9wLWNvbG9yPSIjY2FjYWZiIiAvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzdmN2VhZiIgLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cGF0aCBkPSJNMTEuOTYsMTEuNjhzLjA3LS4xLjA3LS4yNHYtMy44N2MwLS44NS42Ni0xLjc2LDEuNTktMi4wMy0uMDYtLjE5LS42NC0yLjExLS44MS0yLjY1LS4xNy0uNTYtLjY3LTEuOS0xLjI5LTEuOSwwLDAsMCwwLS4wMSwwaDBzLS4wOS4wNS0uMTMuMTNjLS4zMi41OC0uNDYsMy4wMi0uNDYsNC44NHYyLjI2Yy4yNy45Ny45MSwzLjIyLjk2LDMuMzUsMCwwLC4wNS4xLjA5LjFoMFoiIGZpbGw9InVybCgjdXVpZC01YTdiZDdmYS02OTM3LTQ0YmQtYTViYS1lMjNlZGRiYjZkMzUpIiAvPjxwYXRoIGQ9Ik0xMS45NiwxMS42OHMuMDctLjEuMDctLjI0di0zLjg3YzAtLjg1LjY2LTEuNzYsMS41OS0yLjAzLS4wNi0uMTktLjY0LTIuMTEtLjgxLTIuNjUtLjE3LS41Ni0uNjctMS45LTEuMjktMS45LDAsMCwwLDAtLjAxLDBoMHMtLjA5LjA1LS4xMy4xM2MtLjMyLjU4LS40NiwzLjAyLS40Niw0Ljg0djIuMjZjLjI3Ljk3LjkxLDMuMjIuOTYsMy4zNSwwLDAsLjA1LjEuMDkuMWgwWiIgZmlsbD0idXJsKCN1dWlkLWE5YjJhYzc4LWJmZjAtNDc1ZC04OWRmLTJjOTdmMjEyMmY5MykiIC8+PHBhdGggZD0iTTE2LjAxLDUuNDZoLTEuODFjLTEuMjEsMC0yLjE3LDEuMDktMi4xNywyLjExdjMuODdjMCwuMTQtLjA0LjI0LS4wNy4yNHMtLjA5LS4xLS4wOS0uMWMwLDAsLjA3LjIxLjE3LjIxaDEuOThjLjYyLDAsMi40OC0uNjEsMi40OC0yLjUydi0zLjI1YzAtLjQxLS4yNC0uNTUtLjQ5LS41NVoiIGZpbGw9InVybCgjdXVpZC0wM2IzYjcwYy0xYzhkLTRiM2YtOTkzNS1kOWRhMmIyMGRlMmYpIiAvPjxwYXRoIGQ9Ik0yLjM0LDE3aDUuMzhjMi4zNSwwLDMuMi0yLjAzLDMuMi0zLjgxdi03LjIzYzAtMi4wOC4xOS00Ljk3LjYxLTQuOTdoLTMuMjNjLS43NywwLTEuNDMuODItMi4xOCwyLjQ4LS43NSwxLjY2LTQuMzYsMTEuODctNC41MiwxMi4zNi0uMjYuNzktLjAyLDEuMTYuNzQsMS4xNloiIGZpbGw9InVybCgjdXVpZC1jYWJjOGVjOS0zMjkzLTQ0YjgtYTMzYi03MDgyM2Y1ODNiMzApIiAvPjwvc3ZnPg==" x="988" y="1058" width="34" height="34"/>
+  <text x="1037" y="1078" class="heading">Microsoft Foundry</text>
+  <text x="988" y="1111" class="body">Optional: precomputed document scores</text>
+  <text x="988" y="1135" class="small">Via runner, not final pooled report storage</text>
+
+  <rect x="1396" y="235" width="346" height="80" rx="6" class="box"/>
+  <text x="1416" y="263" class="heading">Example configured minimums</text>
+  <text x="1416" y="292" class="body">F1: 0.95 / recall: 0.98 / schema: 1.00</text>
+  <polygon points="1569,340 1704,425 1569,510 1434,425" fill="#fff" stroke="#a89b77" stroke-width="1.5"/>
+  <text x="1569" y="409" text-anchor="middle" class="heading">Report gate</text>
+  <text x="1569" y="436" text-anchor="middle" class="mono">gate_status</text>
+  <text x="1569" y="462" text-anchor="middle" class="mono">== "pass"?</text>
+  <text x="1585" y="556" class="label">All configured gates pass</text>
+  <text x="1569" y="766" text-anchor="middle" class="label">fail / not_configured</text>
+
+  <rect x="1396" y="600" width="346" height="94" rx="6" fill="#edf8ef" stroke="#75ae85" stroke-width="1.5"/>
+  <use href="#check" x="1416" y="621" width="38" height="38" color="#248346"/>
+  <text x="1471" y="635" class="heading" style="fill:#20623a">PASS / exit 0</text>
+  <text x="1471" y="663" class="body">Allow merge or deployment</text>
+  <text x="1416" y="736" class="small">The CI wrapper owns the exit code.</text>
+
+  <rect x="1396" y="785" width="346" height="122" rx="6" fill="#fff1f1" stroke="#d18484" stroke-width="1.5"/>
+  <use href="#cross" x="1416" y="807" width="38" height="38" color="#bb3d3d"/>
+  <text x="1471" y="821" class="heading" style="fill:#9d3030">FAIL / exit nonzero</text>
+  <text x="1471" y="850" class="body">Block merge or deployment</text>
+  <text x="1416" y="884" class="small">Retain report and investigate failing metrics</text>
+
+  <rect x="1396" y="1030" width="346" height="122" rx="6" fill="#fff" stroke="#d18484" stroke-width="1.5"/>
+  <text x="1416" y="1062" class="heading">Extraction or evaluation error</text>
+  <text x="1416" y="1092" class="body">Fail the CI job; never treat as a pass</text>
+  <text x="1416" y="1121" class="small">Keep available logs and diagnostics</text>
+
+  <path d="M32 1220H1768" stroke="#dce4e8"/>
+  <path d="M32 1250H77" class="flow"/>
+  <text x="91" y="1255" class="small">Data / release decision</text>
+  <path d="M340 1250H385" class="optional"/>
+  <text x="399" y="1255" class="small">Optional publishing</text>
+  <path d="M625 1250H670" class="error"/>
+  <text x="684" y="1255" class="small">Failure / error handling</text>
+  <text x="32" y="1291" class="small">Evaluation scoring is offline against gold. CU extraction and optional Foundry publishing are service calls. Applications own storage, authentication, and release policy.</text>
+</svg>

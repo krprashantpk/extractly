@@ -1,0 +1,238 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2100" height="1520" viewBox="0 0 2100 1520" role="img" aria-labelledby="title description">
+  <title id="title">Extractly online evaluation with Human-in-the-Loop review</title>
+  <desc id="description">An application retrieves raw documents, calls Azure Content Understanding, and evaluates extracted values against source evidence without a Golden Dataset. Extractly uses schema checks, native Decision API field and structural evaluators, and optional application-supplied LLM or JEV evaluator adapters or AzureOpenAIGrader with the Foundry runner. An application-owned policy combines per-document review flags, configured score thresholds, coverage, errors, and business rules. Flagged extractions enter a human review queue for approval, correction, or rejection. Reports, reviewer decisions, corrections, and provenance are persisted for traceability. Evaluation scores are review signals, not calibrated accuracy probabilities or automatic approval.</desc>
+  <defs>
+    <style>
+      text { font-family: 'Segoe UI', 'Trebuchet MS', sans-serif; fill: #25313b; }
+      .eyebrow { font-size: 13px; font-weight: 700; letter-spacing: 0; fill: #52616c; }
+      .title { font-size: 34px; font-weight: 700; }
+      .subtitle { font-size: 17px; fill: #52616c; }
+      .lane-title { font-size: 17px; font-weight: 700; }
+      .heading { font-size: 18px; font-weight: 650; }
+      .body { font-size: 15px; fill: #52616c; }
+      .small { font-size: 13px; fill: #52616c; }
+      .mono { font-family: Consolas, monospace; font-size: 14px; fill: #354754; }
+      .label { font-size: 13px; font-weight: 600; fill: #52616c; }
+      .box { fill: #fff; stroke: #ccd6dc; stroke-width: 1.5; }
+      .flow { fill: none; stroke: #647984; stroke-width: 2; marker-end: url(#arrow); }
+      .audit { fill: none; stroke: #0078d4; stroke-width: 2; stroke-dasharray: 6 5; marker-end: url(#blue-arrow); }
+      .error { fill: none; stroke: #c24a4a; stroke-width: 2; stroke-dasharray: 6 5; marker-end: url(#red-arrow); }
+      .symbol { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 Z" fill="#647984"/></marker>
+    <marker id="blue-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 Z" fill="#0078d4"/></marker>
+    <marker id="red-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 Z" fill="#c24a4a"/></marker>
+    <symbol id="document" viewBox="0 0 24 24"><g class="symbol"><path d="M6 3h8l4 4v14H6z M14 3v5h4 M9 12h6 M9 16h6"/></g></symbol>
+    <symbol id="code" viewBox="0 0 24 24"><g class="symbol"><path d="m8 6-5 6 5 6 M16 6l5 6-5 6 M14 3l-4 18"/></g></symbol>
+    <symbol id="database" viewBox="0 0 24 24"><g class="symbol"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 4 16 4 16 0V5 M4 12c0 4 16 4 16 0"/></g></symbol>
+    <symbol id="pipeline" viewBox="0 0 24 24"><g class="symbol"><rect x="2" y="8" width="6" height="8" rx="1"/><rect x="16" y="2" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M8 12h4V5h4 M12 12v7h4"/></g></symbol>
+    <symbol id="policy" viewBox="0 0 24 24"><g class="symbol"><path d="M5 4h14v17H5z M9 4V2h6v2 M8 10l2 2 4-4 M8 16h8"/></g></symbol>
+    <symbol id="check" viewBox="0 0 24 24"><g class="symbol"><circle cx="12" cy="12" r="9"/><path d="m7 12 3 3 7-7"/></g></symbol>
+    <symbol id="chart" viewBox="0 0 24 24"><g class="symbol"><path d="M3 3v18h18 M7 17v-6 M12 17V6 M17 17V9"/></g></symbol>
+    <symbol id="reviewer" viewBox="0 0 24 24"><g class="symbol"><circle cx="9" cy="7" r="4"/><path d="M2 21v-3a7 7 0 0 1 11-6 M16 17l2 2 4-6"/></g></symbol>
+    <symbol id="queue" viewBox="0 0 24 24"><g class="symbol"><path d="M4 3h16v18H4z M8 7h8 M8 12h8 M8 17h4"/></g></symbol>
+    <symbol id="azure-storage" viewBox="0 0 18 18"><image data-azure-icon="Storage-Accounts" href="data:image/svg+xml;base64,PHN2ZyBpZD0iZjJmMDQzNDktOGFlZS00NDEzLTg0YzktYTkwNTM2MTFiMzE5IiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOCIgaGVpZ2h0PSIxOCIgdmlld0JveD0iMCAwIDE4IDE4Ij48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImFkNGM0Zjk2LTA5YWEtNGY5MS1iYTEwLTVjYjhhZDUzMGY3NCIgeDE9IjkiIHkxPSIxNS44MyIgeDI9IjkiIHkyPSI1Ljc5IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjYjNiM2IzIiAvPjxzdG9wIG9mZnNldD0iMC4yNiIgc3RvcC1jb2xvcj0iI2MxYzFjMSIgLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNlNmU2ZTYiIC8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHRpdGxlPkljb24tc3RvcmFnZS04NjwvdGl0bGU+PHBhdGggZD0iTS41LDUuNzloMTdhMCwwLDAsMCwxLDAsMHY5LjQ4YS41Ny41NywwLDAsMS0uNTcuNTdIMS4wN2EuNTcuNTcsMCwwLDEtLjU3LS41N1Y1Ljc5QTAsMCwwLDAsMSwuNSw1Ljc5WiIgZmlsbD0idXJsKCNhZDRjNGY5Ni0wOWFhLTRmOTEtYmExMC01Y2I4YWQ1MzBmNzQpIiAvPjxwYXRoIGQ9Ik0xLjA3LDIuMTdIMTYuOTNhLjU3LjU3LDAsMCwxLC41Ny41N1Y1Ljc5YTAsMCwwLDAsMSwwLDBILjVhMCwwLDAsMCwxLDAsMFYyLjczQS41Ny41NywwLDAsMSwxLjA3LDIuMTdaIiBmaWxsPSIjMzdjMmIxIiAvPjxwYXRoIGQ9Ik0yLjgxLDYuODlIMTUuMThhLjI3LjI3LDAsMCwxLC4yNi4yN3YxLjRhLjI3LjI3LDAsMCwxLS4yNi4yN0gyLjgxYS4yNy4yNywwLDAsMS0uMjYtLjI3VjcuMTZBLjI3LjI3LDAsMCwxLDIuODEsNi44OVoiIGZpbGw9IiNmZmYiIC8+PHBhdGggZD0iTTIuODIsOS42OEgxNS4xOWEuMjcuMjcsMCwwLDEsLjI2LjI3djEuNDFhLjI3LjI3LDAsMCwxLS4yNi4yN0gyLjgyYS4yNy4yNywwLDAsMS0uMjYtLjI3VjEwQS4yNy4yNywwLDAsMSwyLjgyLDkuNjhaIiBmaWxsPSIjMzdjMmIxIiAvPjxwYXRoIGQ9Ik0yLjgyLDEyLjVIMTUuMTlhLjI3LjI3LDAsMCwxLC4yNi4yN3YxLjQxYS4yNy4yNywwLDAsMS0uMjYuMjdIMi44MmEuMjcuMjcsMCwwLDEtLjI2LS4yN1YxMi43N0EuMjcuMjcsMCwwLDEsMi44MiwxMi41WiIgZmlsbD0iIzI1ODI3NyIgLz48L3N2Zz4=" width="18" height="18"/></symbol>
+    <symbol id="azure-ai" viewBox="0 0 18 18"><image data-azure-icon="Cognitive-Services" href="data:image/svg+xml;base64,PHN2ZyBpZD0iZjc4ZjUxMTUtYmU4OC00ZDQ0LWIzNGUtM2Y2ZWE3NDMxMjVjIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxOCIgaGVpZ2h0PSIxOCIgdmlld0JveD0iMCAwIDE4IDE4Ij48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImI2YzQzYmQ5LWUzN2YtNDE5MS05M2MyLWQzYTdhODRjNTA1ZSIgeDE9IjkiIHkxPSIxOS4xMyIgeDI9IjkiIHkyPSItMC4yOSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzAwNzhkNCIgLz48c3RvcCBvZmZzZXQ9IjAuMTYiIHN0b3AtY29sb3I9IiMxMzgwZGEiIC8+PHN0b3Agb2Zmc2V0PSIwLjUzIiBzdG9wLWNvbG9yPSIjM2M5MWU1IiAvPjxzdG9wIG9mZnNldD0iMC44MiIgc3RvcC1jb2xvcj0iIzU1OWNlYyIgLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM1ZWEwZWYiIC8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHRpdGxlPkljb24tbWFjaGluZWxlYXJuaW5nLTE2MjwvdGl0bGU+PHBhdGggZD0iTTE4LDExLjM4QTQsNCwwLDAsMCwxNC40OSw3LjUsNS4xLDUuMSwwLDAsMCw5LjI0LDIuNjIsNS4yNSw1LjI1LDAsMCwwLDQuMjIsNiw0LjgsNC44LDAsMCwwLDAsMTAuNjdhNC45LDQuOSwwLDAsMCw1LjA3LDQuNzFsLjQ0LDBoOC4yMWEuNzguNzgsMCwwLDAsLjIyLDBBNC4xLDQuMSwwLDAsMCwxOCwxMS4zOFoiIGZpbGw9InVybCgjYjZjNDNiZDktZTM3Zi00MTkxLTkzYzItZDNhN2E4NGM1MDVlKSIgLz48cGF0aCBkPSJNNS40MiwxMC4zOUg0LjU0YTEuMDksMS4wOSwwLDEsMCwwLC40OWguODhhLjIuMiwwLDAsMSwuMi4ydjQuM2guNDl2LTQuM0EuNjkuNjksMCwwLDAsNS40MiwxMC4zOVptLTEuOTUuODhhLjY0LjY0LDAsMSwxLC42NC0uNjRBLjY0LjY0LDAsMCwxLDMuNDcsMTEuMjdaIiBmaWxsPSIjOWNlYmZmIiAvPjxwYXRoIGQ9Ik04Ljk0LDEwLjYxdi0xYS43LjcsMCwwLDAtLjctLjdINi42OWEuMi4yLDAsMCwxLS4yLS4yVjMuNGwtLjIzLjEyTDYsMy42NnY1YS42OS42OSwwLDAsMCwuNjkuNjlIOC4yNGEuMjEuMjEsMCwwLDEsLjIxLjIxdjFhMS4wOCwxLjA4LDAsMCwwLS44NSwxLjA2LDEuMDksMS4wOSwwLDEsMCwxLjM0LTEuMDZabS0uMjUsMS43aDBhLjY0LjY0LDAsMSwxLC42NC0uNjRBLjY0LjY0LDAsMCwxLDguNjksMTIuMzFaIiBmaWxsPSIjZjJmMmYyIiAvPjxwYXRoIGQ9Ik0xNC41Myw4LjVhMS4wOSwxLjA5LDAsMCwwLS4yNSwyLjE1di4yYS4yMS4yMSwwLDAsMS0uMjEuMjFoLTJWNy41NGEuNjkuNjksMCwwLDAtLjY5LS42OUgxMC4zNUExLjA4LDEuMDgsMCwwLDAsOS4yOSw2YTEuMDksMS4wOSwwLDEsMCwxLjA2LDEuMzRoMS4wN2EuMi4yLDAsMCwxLC4yLjJ2Ny44NGguNDlWMTEuNTVoMmEuNy43LDAsMCwwLC43LS43di0uMmExLjA5LDEuMDksMCwwLDAsLjg1LTEuMDZoMEExLjA5LDEuMDksMCwwLDAsMTQuNTMsOC41Wk05LjI5LDcuNzNoMGEuNjQuNjQsMCwxLDEsLjY0LS42NEEuNjQuNjQsMCwwLDEsOS4yOSw3LjczWm01LjI0LDIuNWgwYS42NC42NCwwLDEsMSwuNjMtLjY0QS42NC42NCwwLDAsMSwxNC41MywxMC4yM1oiIGZpbGw9IiM5Y2ViZmYiIC8+PC9zdmc+" width="18" height="18"/></symbol>
+    <symbol id="azure-foundry" viewBox="0 0 18 18"><image data-azure-icon="AI-Foundry" href="data:image/svg+xml;base64,PHN2ZyBpZD0idXVpZC02MjA1MDExNy02MzVlLTQyZWQtOTAyYi0yYmEyZWZkOWE3MjIiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiB2aWV3Qm94PSIwIDAgMTggMTgiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0idXVpZC01YTdiZDdmYS02OTM3LTQ0YmQtYTViYS1lMjNlZGRiYjZkMzUiIHgxPSIxMC45MSIgeTE9IjEzLjY2IiB4Mj0iMTMuNjIiIHkyPSIxMy42NiIgZ3JhZGllbnRUcmFuc2Zvcm09InRyYW5zbGF0ZSgwIDIwKSBzY2FsZSgxIC0xKSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzMwMmVjOSIgLz48c3RvcCBvZmZzZXQ9Ii4xMiIgc3RvcC1jb2xvcj0iIzE1MTY5OCIgLz48c3RvcCBvZmZzZXQ9Ii4yNSIgc3RvcC1jb2xvcj0iIzBhMGI3ZSIgLz48c3RvcCBvZmZzZXQ9Ii40MyIgc3RvcC1jb2xvcj0iIzA5MGM3ZiIgLz48c3RvcCBvZmZzZXQ9Ii41MSIgc3RvcC1jb2xvcj0iIzE0MTY5OCIgLz48c3RvcCBvZmZzZXQ9Ii42MSIgc3RvcC1jb2xvcj0iIzI4MmFjNCIgLz48c3RvcCBvZmZzZXQ9Ii43NyIgc3RvcC1jb2xvcj0iIzhlOGZmNCIgLz48c3RvcCBvZmZzZXQ9Ii44NSIgc3RvcC1jb2xvcj0iI2E3YTZmNyIgLz48c3RvcCBvZmZzZXQ9Ii45MSIgc3RvcC1jb2xvcj0iI2NhY2FmYiIgLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNmZmYiIC8+PC9saW5lYXJHcmFkaWVudD48bGluZWFyR3JhZGllbnQgaWQ9InV1aWQtYTliMmFjNzgtYmZmMC00NzVkLTg5ZGYtMmM5N2YyMTIyZjkzIiB4MT0iMTIuMjYiIHkxPSI4LjMyIiB4Mj0iMTIuMjYiIHkyPSIxOC4yMyIgZ3JhZGllbnRUcmFuc2Zvcm09InRyYW5zbGF0ZSgwIDIwKSBzY2FsZSgxIC0xKSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIG9mZnNldD0iLjAyIiBzdG9wLWNvbG9yPSIjMjAxYmE2IiAvPjxzdG9wIG9mZnNldD0iLjY0IiBzdG9wLWNvbG9yPSIjMmQyOWM3IiAvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzIwMWJhNiIgLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0idXVpZC0wM2IzYjcwYy0xYzhkLTRiM2YtOTkzNS1kOWRhMmIyMGRlMmYiIHgxPSIxNC4xOSIgeTE9IjguMjciIHgyPSIxNC4xOSIgeTI9IjE0LjQ3IiBncmFkaWVudFRyYW5zZm9ybT0idHJhbnNsYXRlKDAgMjApIHNjYWxlKDEgLTEpIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjMzUzMGMzIiAvPjxzdG9wIG9mZnNldD0iLjUiIHN0b3AtY29sb3I9IiM2ZDcxZDEiIC8+PHN0b3Agb2Zmc2V0PSIuOTciIHN0b3AtY29sb3I9IiNjMGJmZjUiIC8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZTNlNGZmIiAvPjwvbGluZWFyR3JhZGllbnQ+PGxpbmVhckdyYWRpZW50IGlkPSJ1dWlkLWNhYmM4ZWM5LTMyOTMtNDRiOC1hMzNiLTcwODIzZjU4M2IzMCIgeDE9IjYuNTEiIHkxPSIzIiB4Mj0iNi41MSIgeTI9IjE5LjE1IiBncmFkaWVudFRyYW5zZm9ybT0idHJhbnNsYXRlKDAgMjApIHNjYWxlKDEgLTEpIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjMzAyZWM5IiAvPjxzdG9wIG9mZnNldD0iLjQ1IiBzdG9wLWNvbG9yPSIjMzAyZWM5IiAvPjxzdG9wIG9mZnNldD0iLjk1IiBzdG9wLWNvbG9yPSIjY2FjYWZiIiAvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzdmN2VhZiIgLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cGF0aCBkPSJNMTEuOTYsMTEuNjhzLjA3LS4xLjA3LS4yNHYtMy44N2MwLS44NS42Ni0xLjc2LDEuNTktMi4wMy0uMDYtLjE5LS42NC0yLjExLS44MS0yLjY1LS4xNy0uNTYtLjY3LTEuOS0xLjI5LTEuOSwwLDAsMCwwLS4wMSwwaDBzLS4wOS4wNS0uMTMuMTNjLS4zMi41OC0uNDYsMy4wMi0uNDYsNC44NHYyLjI2Yy4yNy45Ny45MSwzLjIyLjk2LDMuMzUsMCwwLC4wNS4xLjA5LjFoMFoiIGZpbGw9InVybCgjdXVpZC01YTdiZDdmYS02OTM3LTQ0YmQtYTViYS1lMjNlZGRiYjZkMzUpIiAvPjxwYXRoIGQ9Ik0xMS45NiwxMS42OHMuMDctLjEuMDctLjI0di0zLjg3YzAtLjg1LjY2LTEuNzYsMS41OS0yLjAzLS4wNi0uMTktLjY0LTIuMTEtLjgxLTIuNjUtLjE3LS41Ni0uNjctMS45LTEuMjktMS45LDAsMCwwLDAtLjAxLDBoMHMtLjA5LjA1LS4xMy4xM2MtLjMyLjU4LS40NiwzLjAyLS40Niw0Ljg0djIuMjZjLjI3Ljk3LjkxLDMuMjIuOTYsMy4zNSwwLDAsLjA1LjEuMDkuMWgwWiIgZmlsbD0idXJsKCN1dWlkLWE5YjJhYzc4LWJmZjAtNDc1ZC04OWRmLTJjOTdmMjEyMmY5MykiIC8+PHBhdGggZD0iTTE2LjAxLDUuNDZoLTEuODFjLTEuMjEsMC0yLjE3LDEuMDktMi4xNywyLjExdjMuODdjMCwuMTQtLjA0LjI0LS4wNy4yNHMtLjA5LS4xLS4wOS0uMWMwLDAsLjA3LjIxLjE3LjIxaDEuOThjLjYyLDAsMi40OC0uNjEsMi40OC0yLjUydi0zLjI1YzAtLjQxLS4yNC0uNTUtLjQ5LS41NVoiIGZpbGw9InVybCgjdXVpZC0wM2IzYjcwYy0xYzhkLTRiM2YtOTkzNS1kOWRhMmIyMGRlMmYpIiAvPjxwYXRoIGQ9Ik0yLjM0LDE3aDUuMzhjMi4zNSwwLDMuMi0yLjAzLDMuMi0zLjgxdi03LjIzYzAtMi4wOC4xOS00Ljk3LjYxLTQuOTdoLTMuMjNjLS43NywwLTEuNDMuODItMi4xOCwyLjQ4LS43NSwxLjY2LTQuMzYsMTEuODctNC41MiwxMi4zNi0uMjYuNzktLjAyLDEuMTYuNzQsMS4xNloiIGZpbGw9InVybCgjdXVpZC1jYWJjOGVjOS0zMjkzLTQ0YjgtYTMzYi03MDgyM2Y1ODNiMzApIiAvPjwvc3ZnPg==" width="18" height="18"/></symbol>
+  </defs>
+
+  <rect width="2100" height="1520" fill="#fff"/>
+  <text x="32" y="40" class="eyebrow">APPLICATION INTEGRATION / PRODUCTION DOCUMENT PROCESSING</text>
+  <text x="32" y="85" class="title">Online extraction evaluation + Human-in-the-Loop</text>
+  <text x="32" y="119" class="subtitle">Use source evidence and explicit review signals to flag extracted documents before downstream processing</text>
+
+  <rect x="32" y="160" width="370" height="1250" rx="6" fill="#f5f7f9" stroke="#dee5e9"/>
+  <rect x="430" y="160" width="540" height="1250" rx="6" fill="#f3f8fc" stroke="#d7e7f2"/>
+  <rect x="1000" y="160" width="450" height="1250" rx="6" fill="#f5f9f7" stroke="#d7e7de"/>
+  <rect x="1480" y="160" width="588" height="1250" rx="6" fill="#faf8f3" stroke="#e9e2d5"/>
+  <text x="56" y="198" class="lane-title">01 / INPUTS AND BACKENDS</text>
+  <text x="454" y="198" class="lane-title">02 / EXTRACTION AND EVALUATION</text>
+  <text x="1024" y="198" class="lane-title">03 / SIGNALS AND REVIEW POLICY</text>
+  <text x="1514" y="198" class="lane-title">04 / HUMAN-IN-THE-LOOP</text>
+
+  <path class="flow" d="M700 319V375"/>
+  <path class="flow" d="M378 315H414V440H454"/>
+  <path class="flow" d="M700 505V565"/>
+  <path class="flow" d="M378 555H416V640H454"/>
+  <path class="flow" d="M700 720V780"/>
+  <path class="flow" d="M378 1000H416V920H454"/>
+  <path class="flow" d="M700 1030V1090"/>
+  <path class="flow" d="M946 1150H984V420H1024"/>
+  <path class="flow" d="M1225 645V720"/>
+  <path class="flow" d="M1426 820H1466V365H1604"/>
+  <path class="flow" d="M1774 455V565"/>
+  <path class="flow" d="M1944 365H2052V1190H2034"/>
+  <path class="flow" d="M1774 690V750"/>
+  <path class="flow" d="M1774 925V960H1634V1000"/>
+  <path class="flow" d="M1774 960H1900V1140"/>
+  <path class="audit" d="M1024 600H1008V1210H1024"/>
+  <path class="audit" d="M1514 860H1470V1255H1426"/>
+  <path class="error" d="M946 490H958V1380H1498V627H1514"/>
+  <path class="error" d="M946 1005H958" style="marker-end:none"/>
+
+  <rect x="56" y="235" width="322" height="160" rx="6" class="box"/>
+  <use href="#document" x="76" y="257" width="34" height="34" color="#647984"/>
+  <text x="124" y="274" class="heading">Raw Documents</text>
+  <text x="124" y="302" class="body">PDFs, scans, images</text>
+  <use href="#azure-storage" x="76" y="320" width="26" height="26"/>
+  <text x="116" y="340" class="body">Azure Storage Account</text>
+  <use href="#code" x="76" y="355" width="26" height="26" color="#647984"/>
+  <text x="116" y="375" class="body">Any endpoint / API / upload</text>
+
+  <rect x="56" y="445" width="322" height="220" rx="6" class="box"/>
+  <use href="#policy" x="76" y="466" width="34" height="34" color="#647984"/>
+  <text x="124" y="485" class="heading">Config and analyzer schema</text>
+  <text x="76" y="527" class="body">Field selection and schema rules</text>
+  <text x="76" y="558" class="body">Original CU analyzer definition</text>
+  <text x="76" y="589" class="body">Review thresholds and evidence scope</text>
+  <text x="76" y="620" class="body">Caller-configured clients and access</text>
+  <text x="76" y="648" class="small">Do not treat CU confidence as proof</text>
+  <text x="56" y="705" class="heading" style="fill:#27815b">No Golden Dataset required</text>
+  <text x="56" y="729" class="small">Assess predictions against source evidence</text>
+
+  <rect x="56" y="780" width="322" height="475" rx="6" class="box"/>
+  <text x="76" y="815" class="heading">Extraction evaluation backends</text>
+  <text x="76" y="841" class="small">Supply one or combine as needed</text>
+  <use href="#pipeline" x="76" y="866" width="32" height="32" color="#647984"/>
+  <text x="124" y="885" class="heading">Decision API</text>
+  <text x="76" y="917" class="small">Native field + structural judgments</text>
+  <path d="M76 937H358" stroke="#e4e9ec"/>
+  <use href="#code" x="76" y="957" width="32" height="32" color="#647984"/>
+  <text x="124" y="977" class="heading">LLM</text>
+  <text x="76" y="1009" class="small">Application-supplied evaluator callable</text>
+  <path d="M76 1029H358" stroke="#e4e9ec"/>
+  <use href="#code" x="76" y="1049" width="32" height="32" color="#647984"/>
+  <text x="124" y="1069" class="heading">JEV</text>
+  <text x="76" y="1101" class="small">Application-supplied evaluator adapter</text>
+  <path d="M76 1121H358" stroke="#e4e9ec"/>
+  <use href="#azure-foundry" x="76" y="1141" width="32" height="32"/>
+  <text x="124" y="1161" class="mono" style="font-size:16px">AzureOpenAIGrader</text>
+  <text x="76" y="1193" class="small">Requires FoundryEvaluationRunner</text>
+  <text x="76" y="1231" class="small">LLM / JEV adapters are application-owned</text>
+
+  <rect x="454" y="235" width="492" height="84" rx="6" class="box"/>
+  <use href="#pipeline" x="475" y="255" width="36" height="36" color="#647984"/>
+  <text x="527" y="269" class="heading">Application document intake</text>
+  <text x="527" y="295" class="body">API request / upload / message / batch</text>
+  <text x="715" y="351" class="label">Candidate analyzer + configuration</text>
+
+  <rect x="454" y="375" width="492" height="130" rx="6" fill="#fff" stroke="#65a9dc" stroke-width="1.5"/>
+  <use href="#azure-ai" x="475" y="400" width="46" height="46"/>
+  <text x="536" y="411" class="heading">Azure Content Understanding</text>
+  <text x="536" y="440" class="body">Application calls the extraction API</text>
+  <text x="475" y="480" class="mono">Raw Documents to saved CU result</text>
+  <text x="715" y="541" class="label">Predictions + original source evidence</text>
+
+  <rect x="454" y="565" width="492" height="155" rx="6" class="box"/>
+  <use href="#document" x="475" y="587" width="34" height="34" color="#647984"/>
+  <text x="527" y="602" class="heading">Load Document, Evidence, and Config</text>
+  <text x="475" y="642" class="body">Retain Markdown, physical pages, and field spans</text>
+  <text x="475" y="674" class="body">Pair predictions with the original analyzer schema</text>
+  <text x="475" y="703" class="mono">{ id, cu_result, analyzer_definition, ... }</text>
+  <text x="715" y="756" class="label">No ground-truth comparison</text>
+
+  <rect x="454" y="780" width="492" height="250" rx="6" fill="#fff" stroke="#4b9974" stroke-width="2"/>
+  <use href="#code" x="475" y="802" width="36" height="36" color="#27815b"/>
+  <text x="527" y="820" class="heading">Extractly / OnlineEvaluator</text>
+  <text x="527" y="848" class="mono">OnlineEvaluator(config, runner=...)</text>
+  <text x="527" y="872" class="mono">evaluator.run(documents)</text>
+  <path d="M475 890H925" stroke="#deebe4"/>
+  <text x="475" y="917" class="body">SchemaEvaluator: deterministic validation</text>
+  <text x="475" y="946" class="body">Decision: OnlineFieldEvaluator</text>
+  <text x="475" y="975" class="body">+ OnlineStructuralEvaluator</text>
+  <text x="475" y="1007" class="body">LLM / JEV / grader checks via evaluators=...</text>
+  <text x="715" y="1067" class="label">Explicit caller-owned runner</text>
+
+  <rect x="454" y="1090" width="492" height="170" rx="6" fill="#fff" stroke="#65a9dc" stroke-width="1.5"/>
+  <use href="#pipeline" x="475" y="1103" width="26" height="26" color="#0078d4"/>
+  <text x="514" y="1122" class="heading">Runtime / execution backend</text>
+  <path d="M700 1141V1203" stroke="#d7e7f2"/>
+  <text x="475" y="1159" class="body" style="font-weight:650">Local server / application</text>
+  <text x="475" y="1187" class="mono">LocalRunner</text>
+  <text x="721" y="1159" class="body" style="font-weight:650">Foundry SDK runtime</text>
+  <text x="721" y="1187" class="mono">FoundryEvaluationRunner</text>
+  <path d="M475 1210H925" stroke="#d7e7f2"/>
+  <text x="475" y="1232" class="small">Decision checks use separately injected service clients.</text>
+  <text x="475" y="1250" class="small">LocalRunner does not make remote checks local.</text>
+
+  <rect x="1024" y="235" width="402" height="410" rx="6" fill="#fff" stroke="#4b9974" stroke-width="1.5"/>
+  <use href="#chart" x="1044" y="257" width="34" height="34" color="#27815b"/>
+  <text x="1093" y="278" class="heading">Evaluation report</text>
+  <text x="1044" y="319" class="body">1. Schema validity</text>
+  <text x="1044" y="351" class="body">2. Field support / correctness</text>
+  <text x="1044" y="383" class="body">3. Row and table checks</text>
+  <text x="1044" y="415" class="body">4. Evidence and scope coverage</text>
+  <text x="1044" y="447" class="body">5. Configured backend scores</text>
+  <path d="M1044 469H1406" stroke="#deebe4"/>
+  <text x="1044" y="501" class="mono">Per-document review_required</text>
+  <text x="1044" y="533" class="body">Page / field judgments + deferrals</text>
+  <text x="1044" y="563" class="body">gate_status + coverage + config hash</text>
+  <rect x="1044" y="585" width="362" height="43" rx="4" fill="#f2f7f4"/>
+  <text x="1056" y="602" class="small">Scores guide review; not calibrated accuracy</text>
+  <text x="1056" y="620" class="small">or approval probabilities. Checks are configurable.</text>
+  <text x="1240" y="689" class="label">Use document-level signals</text>
+
+  <rect x="1024" y="720" width="402" height="265" rx="6" fill="#fff" stroke="#a89b77" stroke-width="1.5"/>
+  <use href="#policy" x="1044" y="742" width="30" height="30" color="#8a7b55"/>
+  <text x="1090" y="762" class="heading">Application review policy</text>
+  <text x="1044" y="800" class="mono">review_required = true</text>
+  <text x="1044" y="832" class="body">OR low / failed configured scores</text>
+  <text x="1044" y="864" class="body">OR missing / deferred evaluation</text>
+  <text x="1044" y="896" class="body">OR provider / extraction errors</text>
+  <text x="1044" y="928" class="body">OR mandatory business review</text>
+  <text x="1044" y="963" class="small">Custom scores require application routing rules.</text>
+
+  <rect x="1024" y="1090" width="402" height="260" rx="6" class="box"/>
+  <text x="1044" y="1124" class="heading">Persist report + review audit</text>
+  <use href="#azure-storage" x="1044" y="1145" width="32" height="32"/>
+  <text x="1090" y="1165" class="body">JSON / Blob / application database</text>
+  <text x="1044" y="1200" class="body">SQL / Cosmos DB / another store</text>
+  <text x="1044" y="1232" class="body">Report, source IDs, corrections, and decisions</text>
+  <text x="1044" y="1264" class="small">Foundry: optional precomputed runner scores only</text>
+  <path d="M1044 1280H1406" stroke="#e4e9ec"/>
+  <text x="1044" y="1306" class="small">Optional: curate human-verified samples into</text>
+  <text x="1044" y="1327" class="small">a future offline Golden Dataset, with approval.</text>
+
+  <polygon points="1774,275 1944,365 1774,455 1604,365" fill="#fff" stroke="#a89b77" stroke-width="1.5"/>
+  <text x="1774" y="356" text-anchor="middle" class="heading">Human review</text>
+  <text x="1774" y="385" text-anchor="middle" class="heading">required?</text>
+  <text x="1790" y="511" class="label">Yes / uncertain / incomplete</text>
+  <text x="1872" y="481" class="label">No: policy checks complete</text>
+
+  <rect x="1514" y="565" width="520" height="125" rx="6" fill="#fff9e9" stroke="#c5ac66" stroke-width="1.5"/>
+  <use href="#queue" x="1534" y="589" width="36" height="36" color="#9c7a2c"/>
+  <text x="1586" y="605" class="heading">Flag extraction / create review task</text>
+  <text x="1534" y="642" class="body">Queue source document + extracted values + flagged fields</text>
+  <text x="1534" y="669" class="small">Include evidence, judgments, missing scope, and error context</text>
+  <text x="1790" y="728" class="label">Assigned reviewer</text>
+
+  <rect x="1514" y="750" width="520" height="175" rx="6" fill="#fff" stroke="#c5ac66" stroke-width="1.5"/>
+  <use href="#reviewer" x="1534" y="773" width="36" height="36" color="#9c7a2c"/>
+  <text x="1586" y="790" class="heading">Human reviews source + extracted values</text>
+  <text x="1534" y="829" class="body">Approve / correct / reject; inspect evidence side by side</text>
+  <text x="1534" y="861" class="body">Record reason, reviewer ID, and timestamp</text>
+  <text x="1534" y="895" class="small">Preserve the original prediction and evaluation for traceability</text>
+  <text x="1540" y="985" class="label">Reject / request new extraction</text>
+  <text x="1792" y="985" class="label">Approve / correct</text>
+
+  <rect x="1514" y="1000" width="240" height="90" rx="6" fill="#fff1f1" stroke="#d18484" stroke-width="1.5"/>
+  <text x="1534" y="1035" class="heading" style="fill:#9d3030">Reject / re-extract</text>
+  <text x="1534" y="1065" class="small">Hold document; no auto-release</text>
+
+  <rect x="1514" y="1140" width="520" height="130" rx="6" fill="#edf8ef" stroke="#75ae85" stroke-width="1.5"/>
+  <use href="#check" x="1534" y="1162" width="36" height="36" color="#248346"/>
+  <text x="1586" y="1180" class="heading" style="fill:#20623a">Release accepted extraction</text>
+  <text x="1534" y="1213" class="body">Continue downstream only when application policy permits</text>
+  <text x="1534" y="1243" class="small">Keep human-verified status separate from model-only assessment</text>
+  <text x="1514" y="1321" class="small">Human review and business approval are application-owned.</text>
+  <text x="1514" y="1344" class="small">A passing aggregate gate never clears a document review flag.</text>
+
+  <path d="M32 1430H2068" stroke="#dce4e8"/>
+  <path d="M32 1458H77" class="flow"/>
+  <text x="91" y="1463" class="small">Data / routing decision</text>
+  <path d="M348 1458H393" class="audit"/>
+  <text x="407" y="1463" class="small">Report / reviewer audit persistence</text>
+  <path d="M748 1458H793" class="error"/>
+  <text x="807" y="1463" class="small">Failure: hold and route for intervention</text>
+  <text x="32" y="1498" class="small">Reference-free evaluation is evidence-based, not proof of accuracy. Service errors, unsupported judgments, and incomplete coverage must never silently become approval.</text>
+</svg>
