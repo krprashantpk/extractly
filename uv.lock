@@ -661,10 +661,10 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "azure-ai-evaluation" },
+    { name = "azure-storage-blob" },
     { name = "jsonschema" },
     { name = "openai" },
     { name = "pydantic" },
-    { name = "typesafe-sdk" },
 ]
 
 [package.dev-dependencies]
@@ -686,10 +686,10 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "azure-ai-evaluation", specifier = ">=1.18.9,<2" },
+    { name = "azure-storage-blob", specifier = ">=12,<13" },
     { name = "jsonschema", specifier = ">=4.23,<5" },
     { name = "openai", specifier = ">=2,<4" },
     { name = "pydantic", specifier = ">=2.12,<3" },
-    { name = "typesafe-sdk", specifier = ">=0.7.5,<1" },
 ]
 
 [package.metadata.requires-dev]
@@ -2604,15 +2604,6 @@ wheels = [
 ]
 
 [[package]]
-name = "tenacity"
-version = "9.2.1"
-source = { registry = "https://packagefeedproxy.microsoft.io/pypi/simple" }
-sdist = { url = "https://ms-feed-25.pkgs.visualstudio.com/6f084628-a36d-42cb-934d-057357e379dc/_packaging/49d7402f-07bb-4b18-a9ce-086e6e98a554/pypi/download/tenacity/9.2.1/tenacity-9.2.1.tar.gz", hash = "sha256:a606b5c808d0cded4a359d5b9932d867ff2a6a6b64d37350260fd01bbdf83839", size = 58261, upload-time = "2026-10-14T13:03:45Z" }
-wheels = [
-    { url = "https://ms-feed-25.pkgs.visualstudio.com/6f084628-a36d-42cb-934d-057357e379dc/_packaging/49d7402f-07bb-4b18-a9ce-086e6e98a554/pypi/download/tenacity/9.2.1/tenacity-9.2.1-py3-none-any.whl", hash = "sha256:9e56f17539296baab7beabb08b92f6ee3d7be92d8be72d763360677c2ad6580e", size = 32310, upload-time = "2026-10-14T12:13:06Z" },
-]
-
-[[package]]
 name = "tornado"
 version = "6.5.10"
 source = { registry = "https://packagefeedproxy.microsoft.io/pypi/simple" }
@@ -2657,25 +2648,6 @@ source = { registry = "https://packagefeedproxy.microsoft.io/pypi/simple" }
 sdist = { url = "https://ms-feed-25.pkgs.visualstudio.com/6f084628-a36d-42cb-934d-057357e379dc/_packaging/49d7402f-07bb-4b18-a9ce-086e6e98a554/pypi/download/truststore/0.10.5/truststore-0.10.5.tar.gz", hash = "sha256:30d36967ccaded5cbb38d602c433f53600036c79d502f4533a49b60a03bbefcd", size = 28091, upload-time = "2026-10-20T00:18:34Z" }
 wheels = [
     { url = "https://ms-feed-25.pkgs.visualstudio.com/6f084628-a36d-42cb-934d-057357e379dc/_packaging/49d7402f-07bb-4b18-a9ce-086e6e98a554/pypi/download/truststore/0.10.5/truststore-0.10.5-py3-none-any.whl", hash = "sha256:9aaaedaefaf06d8b206278cf8b5012bc897f485a874503501e12d776df78951c", size = 19017, upload-time = "2026-10-19T22:27:31Z" },
-]
-
-[[package]]
-name = "typesafe-sdk"
-version = "0.7.5"
-source = { registry = "https://packagefeedproxy.microsoft.io/pypi/simple" }
-dependencies = [
-    { name = "anyio" },
-    { name = "httpx2" },
-    { name = "packaging" },
-    { name = "pydantic" },
-    { name = "pydantic-core" },
-    { name = "tenacity" },
-    { name = "truststore", marker = "sys_platform != 'emscripten'" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://ms-feed-25.pkgs.visualstudio.com/6f084628-a36d-42cb-934d-057357e379dc/_packaging/49d7402f-07bb-4b18-a9ce-086e6e98a554/pypi/download/typesafe-sdk/0.7.5/typesafe_sdk-0.7.5.tar.gz", hash = "sha256:1eeeb0dc80a7161d84896db42a5016dc0a7c8872fa16540b70163e5357b6d398", size = 34152, upload-time = "2026-10-14T21:21:42Z" }
-wheels = [
-    { url = "https://ms-feed-25.pkgs.visualstudio.com/6f084628-a36d-42cb-934d-057357e379dc/_packaging/49d7402f-07bb-4b18-a9ce-086e6e98a554/pypi/download/typesafe-sdk/0.7.5/typesafe_sdk-0.7.5-py3-none-any.whl", hash = "sha256:967a8b61494d536abb55ee3f3a2b10e81685cb6baad6ccdcab588bdc6c9b86d2", size = 49948, upload-time = "2026-10-21T21:37:16Z" },
 ]
 
 [[package]]

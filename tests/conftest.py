@@ -1,18 +1,20 @@
 """Provide synthetic CU fixtures and a controlled typed evaluation runner."""
 
+import json
+from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
 
 import pytest
 
 from extractly import (
-    CUAdapter,
     EvaluationConfig,
     EvaluationModel,
     OfflineEvaluationConfig,
     OnlineEvaluationConfig,
     TableRule,
     field_comparator,
+    parse_cu_result,
 )
 from extractly.eval_runner import EvaluationRunner, LocalRunner
 from extractly.types import JsonObject
@@ -93,9 +95,10 @@ def raw() -> JsonObject:
 
 
 @pytest.fixture
-def record(config: EvaluationConfig, raw: JsonObject) -> JsonObject:
+def record(raw: JsonObject) -> JsonObject:
     """Prepare the synthetic response used to isolate comparator behavior."""
-    return CUAdapter(config).prepare(raw, "document-1")
+    parsed = parse_cu_result(raw)
+    return {"id": "document-1", "response": json.dumps({"segments": [asdict(segment) for segment in parsed.segments]})}
 
 
 @pytest.fixture

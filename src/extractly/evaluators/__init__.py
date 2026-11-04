@@ -1,9 +1,10 @@
-"""Expose schema validation, extraction scoring, and occurrence ratios."""
+"""Expose LLM and deterministic field/structural evaluators and schema validation."""
 
 from ._shared import ratios
-from .extraction import ExtractionEvaluator
-from .online_field import OnlineFieldEvaluator
-from .online_structural import OnlineStructuralEvaluator
+from .field import FieldEvaluator
+from .llm_field import LLMFieldEvaluator
+from .llm_structural import LLMStructuralEvaluator
 from .schema import SchemaEvaluator
+from .structural import StructuralEvaluator
 
-__all__ = ["ExtractionEvaluator", "OnlineFieldEvaluator", "OnlineStructuralEvaluator", "SchemaEvaluator", "ratios"]
+__all__ = ["FieldEvaluator", "LLMFieldEvaluator", "LLMStructuralEvaluator", "SchemaEvaluator", "StructuralEvaluator", "ratios"]

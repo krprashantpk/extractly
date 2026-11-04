@@ -1,174 +1,126 @@
 ---
 title: Extractly architecture
-description: Evaluation flows, component boundaries, runner contracts, and resource ownership.
+description: Independent evaluators, injectable pipelines, aggregation, and caller-owned resources.
 ---
 
 [README](README.md) | [User guide](docs/guide.md) |
 [Project structure](Project-Structure.md)
 
-## Application integration
-
-### Offline evaluation in CI/CD
-
-Compare candidate extractions with an independent Golden Dataset, persist the
-evaluation report, and use configured thresholds to gate merge or deployment.
-
-![Offline evaluation architecture showing raw document sources, a Golden Dataset, Azure Content Understanding, Extractly evaluators and runtimes, report storage, and threshold-based release gates.](docs/assets/offline-cicd-architecture.svg)
-
-[Open the full-size offline diagram](docs/assets/offline-cicd-architecture.svg)
-
-### Online evaluation with Human-in-the-Loop
-
-Assess extracted values against source evidence without a Golden Dataset.
-Application-owned review policy routes flagged documents to human approval,
-correction, or rejection and retains the evaluation and review audit trail.
-
-![Online evaluation architecture showing extraction, Decision API and optional evaluator backends, Extractly runtimes, per-document review signals, human review routing, and audit persistence.](docs/assets/online-hitl-architecture.svg)
-
-[Open the full-size online diagram](docs/assets/online-hitl-architecture.svg)
-
 ## Evaluation flow
 
 ```text
-OfflineEvaluator                         OnlineEvaluator
-Saved CU + independent gold               Saved CU + analyzer / evidence
-             |                                         |
-OfflineEvaluationConfig                   OnlineEvaluationConfig
-             |                                         |
-CUAdapter + SchemaEvaluator                CUAdapter + SchemaEvaluator
-             |                                         |
-ExtractionEvaluator                       Optional Decision checks:
-Optional text F1                           fields + page structure
-             |                                         |
-             +--- Explicit EvaluationRunner -----------+
-                  LocalRunner / FoundryEvaluationRunner
-                                    |
-                     Coverage validation + aggregation
-                                    |
-                      Gates + configuration fingerprint
-                                    |
-                       Report returned to the caller
+Saved CU + independent gold           Saved CU + analyzer / source Markdown
+              |                                      |
+OfflineEvaluationPipeline              OnlineEvaluationPipeline
+              |                                      |
+FieldEvaluator                        LLMFieldEvaluator
+StructuralEvaluator                   LLMStructuralEvaluator
+SchemaEvaluator                       SchemaEvaluator
+              |                                      |
+              +------ caller-owned runner ------------+
+                               |
+                document coverage validation
+                               |
+           metrics grouped by configured evaluator name
+                               |
+                 +-------------+-------------+
+                 |                           |
+        offline report builder      online report builder
+                 |                           |
+        document means + pooled       one document's metrics
+          occurrence scores                    |
+                 |                 review signals + thresholds
+          threshold gates                      |
+                 |                    review_required flag
+                 +------ compact reports -----+
 ```
 
-Decision service requests run in the online workflow before its schema and
-custom-evaluator runner job. They use the injected Decision client, not the
-runner's optional Foundry publishing client. Selecting `LocalRunner` therefore
-does not make injected semantic checks local.
+An explicit evaluator mapping replaces defaults. Offline calls require gold;
+online calls never forward gold. Clients and deployments configure online
+defaults without hidden authentication or client construction.
 
 ## Responsibilities
 
-| Component | Owned responsibility |
+| Component | Responsibility |
 | --- | --- |
-| [Comparison models](src/extractly/comparison.py) | Compile field selection, Pydantic validation, and registered boolean comparison rules |
-| [Configuration](src/extractly/config.py) | Validate shared table paths, context budgets, and minimum-score policy |
-| [CU parsing](src/extractly/cu/cu_result_parser.py) | Unwrap typed fields while retaining segment occurrences and evidence |
-| [Adapter](src/extractly/cu/adapter.py) | Prepare canonical response, Markdown, confidence, and span metadata |
-| [Ground-truth helper](src/extractly/cu/ground_truth.py) | Build editable annotation drafts without treating them as independent gold |
-| [Page preparation](src/extractly/cu/_pages.py) | Assign physical-page evidence and defer uncertain provenance |
-| [Evaluators](src/extractly/evaluators/__init__.py) | Schema validation, positional gold comparison, or focused Decision judgments |
-| [Offline workflow](src/extractly/offline.py) | Require gold, prepare datasets, validate extraction counts, and pool occurrence metrics |
-| [Online workflow](src/extractly/online.py) | Prepare reference-free inputs, execute injected Decision checks, and retain page progress |
-| [Runner interfaces](src/extractly/eval_runner/base.py) | Execute typed requests and return rows, metrics, and optional provider metadata |
-| [Shared mechanics](src/extractly/_shared.py) | Serialize temporary datasets, dispatch runners, validate coverage, and build compact reports |
+| [Comparison models](src/extractly/comparison.py) | Typed fields and registered static comparison policies |
+| [CU parser](src/extractly/cu/cu_result_parser.py) | Single conversion path for typed segments, local Markdown, and normalized fields |
+| [Field evaluator](src/extractly/evaluators/field.py) | Reference-based validation, comparisons, and field metrics |
+| [Structural evaluator](src/extractly/evaluators/structural.py) | Model-derived table and positional row presence |
+| [LLM field evaluator](src/extractly/evaluators/llm_field.py) | Source-grounded field judgments |
+| [LLM structural evaluator](src/extractly/evaluators/llm_structural.py) | Source counts and structural integrity judgments |
+| [Schema evaluator](src/extractly/evaluators/schema.py) | Stateless normalized-value validation |
+| [Offline pipeline](src/extractly/offline_pipeline.py) | Reference-based defaults and batch entry point |
+| [Online pipeline](src/extractly/online_pipeline.py) | Caller-configured LLM defaults and single-document reference-free entry point |
+| [Pipeline mechanics](src/extractly/_pipeline.py) | Dispatch, preparation, execution, coverage, and separate offline aggregation and online review reports |
+| [Runners](src/extractly/eval_runner/base.py) | Typed execution boundary and optional publishing |
+| [Golden-dataset stores](src/extractly/store/base.py) | Independent ground-truth loading keyed by document ID |
 
-Neither workflow imports, delegates to, or branches into the other. Their public
-methods do not accept mode flags; supplying or omitting gold cannot switch
-behavior. Offline single-document evaluation requires gold, and the online
-single-document signature does not accept it. Online batch gold is ignored
-and never serialized into evaluator datasets.
+Evaluators do not accept pipeline configuration. Required model and evidence
+inputs are call parameters. CU parsing is available independently of either
+pipeline.
 
-Offline configuration adds optional text-overlap diagnostics. Online
-configuration adds field budgets, selected original paths, document-level
-fields, and record selection. Semantic model settings belong to supplied
-clients, not hidden workflow configuration.
+The CU parser returns `ParsedCUResult.segments` as an ordered list of frozen
+`ParsedCUSegment` dataclasses. Each carries source identity, pages, local
+Markdown, and normalized fields. Confidence, geometry, and span evidence are
+not collected. Pipelines serialize the canonical segment envelope and preserve
+field pointers. Binding uses each segment's Markdown rather than the combined
+document context. Offline ground truth remains independently supplied.
 
-## Execution and publishing
+`run_pipeline` dispatches to `run_offline_pipeline` or `run_online_pipeline`.
+The offline path validates and forwards ground truth; the online path excludes
+it and rejects batch inputs. Both reuse parsing, runner execution, result
+validation, fingerprinting, and rounding helpers. Offline `_build_report`
+retains aggregation and gates. A separate `_build_online_report` uses the
+single document's row metrics without calling the offline report builder.
 
-Both workflows require an explicit `runner=`; neither chooses a fallback.
-Runners subclass `EvaluationRunner` and consume `RunnerRequest` datasets
-before returning `RunnerResult`. Shared validation checks exact document ID
-coverage and required outputs regardless of the backend.
+`GoldenDatasetStore.load(prefix)` is a separate persistence boundary.
+`AzureBlobGoldenDatasetStore` reads one JSON annotation per document beneath
+a directory prefix using a caller-owned synchronous container client.
+Callers join the returned ground truth to saved CU responses before invoking
+the offline pipeline. Stores do not create clients, derive gold from
+predictions, or perform evaluation.
 
-* `LocalRunner` invokes synchronous callables sequentially and averages numeric
-  outputs. It performs no authentication or publishing, rejects grader objects,
-  and does not prevent supplied callables from making remote requests.
-* `FoundryEvaluationRunner` delegates execution to
-  `azure.ai.evaluation.evaluate`. `config.project` optionally selects classic
-  publishing through that SDK.
-* A caller-owned `openai.OpenAI` client on `FoundryEvaluationRunner` additionally
-  submits precomputed per-document scores to new Foundry evaluations. It does
-  not rescore in the cloud. Submitted records contain IDs and scalar outputs,
-  not source inputs or detailed evaluator diagnostics.
+## Aggregation contract
 
-New Foundry grading criteria require a finite numeric score in `[0, 1]` for
-every row; occurrence and violation counts are diagnostics. Review flags and
-Decision metrics appended after runner execution are not part of that runner's
-published scores. Portal document-score averages are not pooled field F1.
+Each evaluator returns a nonempty `metrics` dictionary of finite scalar scores
+or unknown values. Diagnostics are excluded from compact reports. Both
+document and run metrics are grouped by evaluator name.
 
-Standalone runner metadata can retain publishing IDs and URLs. Workflow
-reports intentionally omit native runner metadata and raw SDK rows. See
-[the runner guide](docs/guide.md#execution-runners) for configuration and limits.
+Offline document means retain defined-value averaging. Complete occurrence groups
+also produce pooled ratios from summed TP/FP/FN. Missing occurrence evidence
+cannot become a perfect pooled score. Thresholds use unrounded values;
+rounded report copies do not modify runner results.
 
-## Ownership and failure contracts
+Online reports contain one document ID, direct namespaced metrics, and a
+`review_required` flag instead of document lists, batch means, pooled scores,
+or gates. Review combines document signals with configured document-metric
+threshold failures, including missing or undefined scores. Multiple canonical
+segments within the same document retain segment-local evaluation and
+document-level occurrence counts and ratios.
 
-Library callers configure authentication, provider policies, custom evaluators,
-and required execution runner instances. The library never closes caller-owned
-dependencies, commits transactions, creates cloud resources, or reads an
-application's local settings.
+Field comparison and structural presence are independent. Whole-list
+comparators cannot hide extra rows from structural metrics. Matching counts
+do not establish row identity or scalar correctness.
 
-Applications own source loading, error handling, report storage, and approval
-policies. There is no command-line entry point or automatic environment-file
-loading. Custom checks cannot replace reserved built-in evaluators.
+## Ownership and failures
 
-Temporary JSONL inputs contain sensitive document evidence and are removed at
-the end of the evaluation context, including on exceptions. This is filesystem
-cleanup, not a secure-erasure guarantee. Native SDK behavior may create its own
-telemetry or artifacts. Report retention belongs to the caller.
+Callers own authentication, clients, retries, timeouts, execution runners,
+source loading, report storage, and approval policies. The package does not
+close caller-owned clients or choose a fallback runner.
 
-Failed or incomplete provider output raises rather than producing success-shaped
-partial averages. Provider exceptions propagate unchanged. Decision batches
-prepare all page requests before inference; after failure, `page_results`
-retains completed, failed, and unattempted page states, while
-`request_previews` retains prepared batch requests. No successful workflow
-report is fabricated after a failed page.
+Provider exceptions propagate unchanged. Every document identity must appear
+exactly once in runner results, and every selected evaluator must supply
+usable metrics. Temporary input files are cleaned up on success and failure;
+this is not secure erasure.
 
-## Comparison and report semantics
+`LocalRunner` does not publish or authenticate, but supplied evaluators can
+make remote calls. `FoundryEvaluationRunner` retains SDK execution and optional
+publishing. Compact reports exclude native runner rows and metadata.
 
-Arrays compare at matching positional indices, without keyed alignment.
-Duplicate occurrences remain distinct. A default `TableRule` counts the
-selected list as a table and its elements as rows; empty lists retain a table,
-while missing lists do not. Field-value comparison is independent of row/table
-presence, identity, and association checks.
+## Client APIs
 
-Comparators return one boolean. Accepted variation is a normal match in every
-score, including exact match. Invalid gold raises; invalid predictions count
-as errors. Defaults never manufacture observed values.
-
-Pooled field scores use summed TP/FP/FN occurrences. Mean-document scores
-average defined per-document scores. Undefined positive ratios remain null.
-Offline run-level exact match requires every document to match; the document
-exact-match rate instead reports the matching fraction. See
-[metric definitions](docs/guide.md#reports-and-metrics).
-
-Base reports contain run metrics, per-document scores and review flags,
-per-field summaries, gates, mode, document count, and a configuration hash.
-They exclude raw inputs and job results. Decision reports additionally retain
-detailed page judgments and coverage, so they can contain source values.
-Multi-page evidence does not establish a document-wide field score or unique
-table count. Resolved page row counts can pool only with complete row coverage.
-
-Review flags are document-specific and independent of run-level gates.
-Base gates fail on missing or undefined scores and use unrounded values before
-report rounding. Decision gates allow `incomplete` for unresolved metrics and
-reject unknown metric names. Neither gate status nor model probability is an
-automatic release or business approval.
-
-## Deliberate boundaries
-
-No document ingestion, persistence framework, retry engine, review workflow,
-probability calibration, or business-specific validation is included. Semantic
-grading and publishing are opt-in service operations. Neither evaluates the
-correctness of the original OCR independently.
-
-See [the user guide](docs/guide.md) for executable examples and
-[contributing](CONTRIBUTING.md) for development checks.
+CU parsing and custom static comparison registration remain supported.
+The CU package contains only the parser module and its exports. Adapter
+preparation, ground-truth draft generation, and analyzer/page helpers have been
+removed, along with the obsolete combined extraction and Decision evaluators.

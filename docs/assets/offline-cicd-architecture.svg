@@ -129,7 +129,7 @@
   <text x="499" y="834" class="mono">OfflineEvaluator(config, runner=...)</text>
   <text x="499" y="857" class="mono">evaluator.run(documents)</text>
   <path d="M447 872H863" stroke="#deebe4"/>
-  <text x="447" y="898" class="body">CUAdapter canonicalizes saved predictions</text>
+  <text x="447" y="898" class="body">parse_cu_result normalizes saved predictions</text>
   <text x="447" y="925" class="body">Run built-in + any supplied evaluators</text>
   <text x="447" y="952" class="body">Pool counts, aggregate metrics, check gates</text>
   <text x="670" y="1003" class="label">Explicit caller-owned runner</text>

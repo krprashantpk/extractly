@@ -10,7 +10,13 @@ from azure.ai.evaluation import AzureOpenAIGrader
 from openai import OpenAI
 from pytest_mock import MockerFixture
 
-from extractly import OfflineEvaluationConfig, OfflineEvaluator, OnlineEvaluationConfig, OnlineEvaluator
+from extractly import (
+    OfflineEvaluationConfig,
+    OfflineEvaluationPipeline,
+    OnlineEvaluationConfig,
+    OnlineEvaluationPipeline,
+    SchemaEvaluator,
+)
 from extractly.eval_runner import EvaluationRunner, FoundryEvaluationRunner, LocalRunner, RunnerRequest, RunnerResult
 from extractly.types import JsonObject
 
@@ -108,20 +114,17 @@ def test_given_local_invalid_output_when_run_then_contract_error(local_request: 
         LocalRunner().run(request)
 
 
-@pytest.mark.parametrize("text_f1", [False, True])
-def test_given_explicit_local_runner_when_offline_then_no_foundry_execution(raw: JsonObject, record: JsonObject, text_f1: bool, mocker: MockerFixture) -> None:
-    """Keep runner selection caller-owned, including local SDK text diagnostics."""
+def test_given_explicit_local_runner_when_offline_then_no_foundry_execution(raw: JsonObject, record: JsonObject, offline_config: OfflineEvaluationConfig, mocker: MockerFixture) -> None:
+    """Keep runner selection caller-owned with the default independent evaluators."""
     runner = LocalRunner()
     provider = mocker.patch("extractly.eval_runner.foundry.evaluate", side_effect=AssertionError("Foundry must not run"))
-    evaluator = OfflineEvaluator(OfflineEvaluationConfig(text_f1=text_f1), runner=runner)
+    evaluator = OfflineEvaluationPipeline(offline_config, runner=runner)
 
-    report = evaluator.evaluate(raw, document_id="d", ground_truth=json.loads(record["response"]))
+    report = evaluator.run(raw, document_id="d", ground_truth=json.loads(record["response"]))
 
     assert evaluator.runner is runner
-    assert report["metrics"]["schema.valid"] == 1
-    assert report["metrics"]["extraction.pooled_field_f1"] == 1
-    if text_f1:
-        assert report["metrics"]["text_f1.f1_score"] == 1
+    assert report["metrics"]["schema"]["valid"] == 1
+    assert report["metrics"]["field"]["extraction.pooled_field_f1"] == 1
     provider.assert_not_called()
 
 
@@ -132,8 +135,8 @@ def test_given_runner_contract_when_inspected_then_abstract_run() -> None:
     assert issubclass(FoundryEvaluationRunner, EvaluationRunner)
 
 
-@pytest.mark.parametrize("workflow", [OfflineEvaluator, OnlineEvaluator])
-def test_given_workflow_when_inspected_then_runner_required(workflow: type[OfflineEvaluator] | type[OnlineEvaluator]) -> None:
+@pytest.mark.parametrize("workflow", [OfflineEvaluationPipeline, OnlineEvaluationPipeline])
+def test_given_workflow_when_inspected_then_runner_required(workflow: type[OfflineEvaluationPipeline] | type[OnlineEvaluationPipeline]) -> None:
     """Make execution strategy an explicit constructor dependency."""
     parameter = signature(workflow).parameters["runner"]
 
@@ -265,14 +268,14 @@ def test_given_foundry_failure_when_run_then_original_exception(mocker: MockerFi
     assert caught.value is error
 
 
-@pytest.mark.parametrize("workflow", [OfflineEvaluator, OnlineEvaluator])
+@pytest.mark.parametrize("workflow", [OfflineEvaluationPipeline, OnlineEvaluationPipeline])
 @pytest.mark.parametrize("runner", [None, lambda request: RunnerResult(rows=[], metrics={})])
-def test_given_nonrunner_when_constructed_then_rejected(workflow: type[OfflineEvaluator] | type[OnlineEvaluator], runner: EvaluationRunner) -> None:
+def test_given_nonrunner_when_constructed_then_rejected(workflow: type[OfflineEvaluationPipeline] | type[OnlineEvaluationPipeline], runner: EvaluationRunner) -> None:
     """Reject None and legacy functions rather than silently choosing Foundry."""
-    config = OfflineEvaluationConfig() if workflow is OfflineEvaluator else OnlineEvaluationConfig()
+    config = OfflineEvaluationConfig() if workflow is OfflineEvaluationPipeline else OnlineEvaluationConfig()
 
     with pytest.raises(TypeError, match="EvaluationRunner"):
-        workflow(config, runner=runner)
+        workflow(config, runner=runner, evaluators={"schema": SchemaEvaluator()})
 
 
 @pytest.mark.parametrize("native", [
@@ -289,15 +292,15 @@ def test_given_invalid_sdk_containers_when_run_then_rejected(native: JsonObject,
         FoundryEvaluationRunner().run(request)
 
 
-def test_given_untyped_result_when_run_then_rejected(raw: JsonObject, local_runner: EvaluationRunner, mocker: MockerFixture) -> None:
+def test_given_untyped_result_when_run_then_rejected(raw: JsonObject, online_config: OnlineEvaluationConfig, local_runner: EvaluationRunner, mocker: MockerFixture) -> None:
     """Enforce typed results even when a custom implementation returns a dict."""
     mocker.patch.object(local_runner, "run", return_value={"rows": [], "metrics": {}})
 
     with pytest.raises(RuntimeError, match="RunnerResult"):
-        OnlineEvaluator(OnlineEvaluationConfig(), runner=local_runner).evaluate(raw, document_id="d")
+        OnlineEvaluationPipeline(online_config, runner=local_runner, evaluators={"schema": SchemaEvaluator()}).evaluate(raw, document_id="d")
 
 
-def test_given_result_metadata_when_reported_then_raw_results_omitted(raw: JsonObject, local_runner: EvaluationRunner, mocker: MockerFixture) -> None:
+def test_given_result_metadata_when_reported_then_raw_results_omitted(raw: JsonObject, online_config: OnlineEvaluationConfig, local_runner: EvaluationRunner, mocker: MockerFixture) -> None:
     """Omit raw job results while retaining metrics from typed runner outputs."""
     original_run = local_runner.run
 
@@ -308,8 +311,8 @@ def test_given_result_metadata_when_reported_then_raw_results_omitted(raw: JsonO
 
     mocker.patch.object(local_runner, "run", side_effect=run_with_metadata)
 
-    report = OnlineEvaluator(OnlineEvaluationConfig(), runner=local_runner).evaluate(raw, document_id="d")
+    report = OnlineEvaluationPipeline(online_config, runner=local_runner, evaluators={"schema": SchemaEvaluator()}).evaluate(raw, document_id="d")
 
     assert "foundry" not in report
     assert "studio_url" not in report
-    assert report["metrics"]["schema.valid"] == 1
+    assert report["metrics"]["schema"]["valid"] == 1

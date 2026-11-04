@@ -1,6 +1,6 @@
 ---
 title: Repository Coding Guidelines
-description: Project-agnostic Python coding conventions and design principles.
+description: Python coding conventions, design principles, and README maintenance guidelines.
 ---
 
 ## Design Principles
@@ -58,3 +58,11 @@ description: Project-agnostic Python coding conventions and design principles.
 - Use clear error messages that identify the invalid parameter or violated contract. Raise `RuntimeError` when a provider result violates an expected contract.
 - Let provider exceptions propagate unchanged unless a documented API contract requires translation. Do not silently suppress failures or substitute success-shaped results.
 - Keep each `raise` statement on one physical line, including the exception constructor, message, and any `from` clause.
+
+## README Maintenance
+
+- Preserve [README.md](README.md)'s current [Ingestra-inspired](https://github.com/krprashantpk/ingestra) layout and concise, user-facing style. Do not redesign, reorder, or substantially expand it unless explicitly requested.
+- Retain the short introduction, Python badge, navigation links, evaluation-flow diagram, and section order: Features, Installation, Quick start (including Online evaluation), Evaluators, Extending Extractly, CU parsing, Documentation, Local development, and Contributing.
+- Keep installation instructions, API names, examples, and links accurate as behavior changes. Keep the offline quick start self-contained and runnable without credentials or network calls; clearly identify remote-service examples and their prerequisites.
+- Put detailed API contracts, architecture, migration guidance, and longer examples in [the user guide](docs/guide.md) or other linked documentation rather than expanding the README.
+- Execute changed runnable examples and validate local links and heading anchors. Preserve existing anchors unless an explicitly requested restructuring requires updating them and their references.

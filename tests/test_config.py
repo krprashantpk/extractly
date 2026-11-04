@@ -81,9 +81,9 @@ def test_given_separate_policies_when_loaded_then_only_common_contract_shared() 
     """Keep each workflow's settings out of the other's public schema."""
     assert "model" not in OfflineEvaluationConfig.model_fields
     assert "text_f1" not in OnlineEvaluationConfig.model_fields
-    assert "text_f1" in OfflineEvaluationConfig.model_fields
+    assert "text_f1" not in OfflineEvaluationConfig.model_fields
     assert "model" not in OnlineEvaluationConfig.model_fields
-    assert "max_fields_per_document" in OnlineEvaluationConfig.model_fields
+    assert "max_fields_per_document" not in OnlineEvaluationConfig.model_fields
 
 
 @pytest.mark.parametrize(("path", "selected"), [("/segments/0/fields/items/0/quantity", True), ("/segments/0/fields/items/1/quantity", True), ("/segments/0/fields/items/0/name", False), ("/other/quantity", False)])

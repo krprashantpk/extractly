@@ -1,6 +1,5 @@
-"""Convert CU results into evaluation records and editable annotation drafts."""
+"""Parse CU results into segment-local Markdown and normalized fields."""
 
-from .adapter import CUAdapter
-from .ground_truth import build_ground_truth
+from .cu_result_parser import ParsedCUResult, ParsedCUSegment, parse_cu_result
 
-__all__ = ["CUAdapter", "build_ground_truth"]
+__all__ = ["ParsedCUResult", "ParsedCUSegment", "parse_cu_result"]

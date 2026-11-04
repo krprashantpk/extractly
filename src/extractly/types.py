@@ -7,7 +7,5 @@ schemas are configured by the caller rather than fixed by this package.
 from collections.abc import Callable
 from typing import Any
 
-from azure.ai.evaluation import AzureOpenAIGrader
-
 type JsonObject = dict[str, Any]
-type Evaluator = Callable[..., JsonObject] | AzureOpenAIGrader
+type Evaluator = Callable[..., JsonObject]
