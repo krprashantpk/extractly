@@ -27,8 +27,10 @@ flowchart TD
     Custom --> Inputs
     Parse --> Runner[Caller-owned runner]
     Inputs --> Runner
-    Runner --> Evaluators[Bound field, structural, and schema evaluators]
-    Evaluators --> Coverage[Validate document coverage and metric outputs]
+    Runner --> Segments[Invoke each evaluator separately for each segment]
+    Segments --> Evaluators[Segment-local field, structural, and schema metrics]
+    Evaluators --> Combined[Combine document metrics: sum occurrence counts and recompute ratios]
+    Combined --> Coverage[Validate document coverage and metric outputs]
     Coverage --> OfflineReport[Offline means, pooled counts, and gates]
     Coverage --> OnlineReport[Online document metrics and review thresholds]
     Skipped --> OnlineReport
@@ -95,6 +97,10 @@ predictions, or perform evaluation.
 Each evaluator returns a nonempty `metrics` dictionary of finite scalar scores
 or unknown values. Diagnostics are excluded from compact reports. Both
 document and run metrics are grouped by evaluator name.
+
+Each segment triggers a separate invocation of every configured evaluator. Default online field and structural evaluators each make one LLM request per supported segment, so two segments make four requests, excluding retries; schema validation and default offline checks make no LLM requests. Segments are never bundled into one LLM request by the pipelines.
+
+Before reporting, segment metrics become one document-level metrics set per evaluator: complete TP/FP/FN groups are summed and precision, recall, and F1 are recomputed from those totals, not averaged from segment ratios. Incomplete groups remain unknown. Schema validity requires all evaluated segments to conform, and any segment review signal is retained. Individual segment scores are not exposed in pipeline reports.
 
 Offline document means retain defined-value averaging. Complete occurrence groups
 also produce pooled ratios from summed TP/FP/FN. Missing occurrence evidence

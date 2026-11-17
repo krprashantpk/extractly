@@ -102,6 +102,8 @@ pipeline, and the original analyzer definitions as
 its selected analyzer's rules. These defaults make remote inference requests,
 even when using `LocalRunner`.
 
+Segments are evaluated separately, not combined in one LLM request: two supported segments make four LLM calls with the default online evaluators, excluding retries. Segment TP/FP/FN counts are summed and precision, recall, and F1 are recalculated into one document-level metrics set per evaluator; separate segment scores are not returned. See [segment calls and document metrics](docs/guide.md#segment-calls-and-document-metrics).
+
 To run schema-only assessment without a model service, reuse `Delivery` and
 `raw` from the quick start:
 

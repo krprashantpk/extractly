@@ -338,6 +338,24 @@ unrounded scores before the report is rounded to three decimal places. With
 no configured thresholds, document-review signals alone determine the flag.
 The flag is a model-assisted review signal, not independently verified accuracy.
 
+### Segment calls and document metrics
+
+Both pipelines invoke each configured evaluator separately for each segment. Each invocation receives only that segment's Markdown and extracted fields, plus its matching analyzer definition online or positional ground truth offline. Segments are not combined into one LLM request.
+
+With the default online evaluators, two supported, non-skipped classifier segments produce the following calls on a successful run, excluding client retries:
+
+| Evaluator | Segment 1 | Segment 2 | Total LLM calls |
+| --- | --- | --- | --- |
+| LLM field | One LLM call | One LLM call | 2 |
+| LLM structural | One LLM call | One LLM call | 2 |
+| Schema | Local validation | Local validation | 0 |
+
+This makes four LLM calls for the document. Segment calls run sequentially within each evaluator. The default offline evaluators perform local reference-based checks and schema validation without LLM calls; custom evaluator mappings can change which remote calls occur.
+
+Segment metrics are combined into one document-level metrics set per evaluator before reporting. Complete TP/FP/FN groups are summed across segments, then precision, recall, and F1 are recalculated from those totals rather than averaged from segment ratios. Incomplete occurrence evidence leaves those totals and ratios unknown. Other numeric metrics generally use defined-value means; schema validity requires every evaluated segment to conform. A review signal from any segment is retained.
+
+Neither pipeline returns a separate metrics entry for each segment. Online reports expose the combined document metrics directly under `metrics`; offline reports expose them in `document_metrics` and additionally aggregate across documents.
+
 ### Offline aggregation
 
 Document scores are averaged over defined numeric values. All-undefined
@@ -348,11 +366,7 @@ use `extraction.mean_document_*` names. Other complete TP/FP/FN groups expose
 `pooled_precision`, `pooled_recall`, and `pooled_f1` under their metric prefix.
 Unresolved occurrence groups retain unknown pooled ratios.
 
-Canonical segments are evaluated at their original positions. Within one
-document, segment occurrence counts are summed and ratios recomputed. Schema
-validity requires every evaluated segment to conform. Document review flags
-remain separate from batch thresholds and incorporate evaluator-supplied
-review signals, failed conformance, unresolved counts, and directional errors.
+Canonical segments are evaluated at their original positions and combined as described in [segment calls and document metrics](#segment-calls-and-document-metrics). Document review flags remain separate from batch thresholds and incorporate evaluator-supplied review signals, failed conformance, unresolved counts, and directional errors.
 
 ### Offline minimum-score gates
 
@@ -391,10 +405,7 @@ assert segment.fields == {"quantity": 10}
 assert asdict(parsed)["segments"][0]["fields"] == {"quantity": 10}
 ```
 
-Dataclass attribute references are frozen; nested dictionaries and page lists
-remain mutable. The parser does not collect CU confidence, geometry, or spans.
-Classifier-declared segments without child extraction content retain empty
-Markdown and fields, rather than borrowing the parent's full text.
+Dataclass attribute references are frozen; nested dictionaries and page lists remain mutable. The parser does not collect CU confidence, geometry, or spans. Content with non-null `fields`, including an empty field dictionary, keeps its own Markdown and normalized fields even when CU repeats classifier `segments` metadata on the extraction content; that metadata does not create extra descendant segments. Classifier-declared segments without child extraction content retain empty Markdown and fields, rather than borrowing the parent's full text.
 
 Both pipelines call this parser and serialize its segments inside a
 `{"segments": [...]}` envelope. Each evaluator receives only its owning

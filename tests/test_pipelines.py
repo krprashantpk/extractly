@@ -196,6 +196,32 @@ def test_given_online_defaults_when_run_then_reference_free_evaluator_inputs_are
     assert field.call_args.kwargs["markdown"] == raw["contents"][0]["markdown"]
 
 
+@pytest.mark.parametrize("with_classifier", [False, True])
+def test_given_repeated_classifier_segments_when_online_defaults_run_then_extraction_is_evaluated_once(with_classifier: bool, raw: JsonObject, quantity_schema: type[EvaluationModel], analyzer_definitions: list[JsonObject], mocker: MockerFixture) -> None:
+    """Forward routed source and values rather than fabricated blank descendants."""
+    child = raw["contents"][0]
+    child.update(path="input1/segment1", analyzerId="events", segments=[{"segmentId": "segment1", "category": "Events"}])
+    raw["contents"].insert(0, {"path": "input1", "markdown": "Classifier-only source", "segments": child["segments"]})
+    definitions = analyzer_definitions if with_classifier else analyzer_definitions[1:2]
+    config = OnlineEvaluationConfig(extraction_model=quantity_schema, analyzer_definitions=definitions)
+    field = mocker.patch.object(LLMFieldEvaluator, "__call__", return_value={"metrics": {"score": 1}})
+    structural = mocker.patch.object(LLMStructuralEvaluator, "__call__", return_value={"metrics": {"score": 1}})
+    client = mocker.Mock(spec=OpenAI)
+    pipeline = OnlineEvaluationPipeline(config, runner=LocalRunner(), client=client, deployment="test-model")
+
+    report = pipeline.run(raw, document_id="d")
+
+    for evaluator in (field, structural):
+        evaluator.assert_called_once()
+        assert evaluator.call_args.kwargs["markdown"] == child["markdown"]
+        assert evaluator.call_args.kwargs["extracted_values"]["items"][0]["quantity"] == 12000
+        assert evaluator.call_args.kwargs["analyzer_definition"] == analyzer_definitions[1]
+    assert report["metrics"]["schema"]["valid"] == 1
+    assert "skipped_contents" not in report
+    assert report["review_required"] is False
+    client.chat.completions.create.assert_not_called()
+
+
 @pytest.mark.parametrize("invalid", [{}, {"schema": None}, {"": lambda: {}}, {"bad.name": lambda: {}}])
 def test_given_invalid_evaluator_mapping_when_constructed_then_rejected(invalid: JsonObject) -> None:
     """Reject empty mappings, ambiguous names, and noncallable dependencies early."""

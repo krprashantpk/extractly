@@ -61,7 +61,7 @@ def parse_cu_result(raw: Mapping[str, Any]) -> ParsedCUResult:
         raw: Raw CU dictionary, optionally wrapped in a result property.
 
     Returns:
-        Ordered segment-local Markdown and detached JSON-compatible fields, plus encoding metadata, without mutating the input or retaining confidence, geometry, or spans.
+        Ordered segment-local Markdown and detached JSON-compatible fields, plus encoding metadata, without mutating the input or retaining confidence, geometry, or spans. Content with non-null fields remains an extraction even when it carries classifier segment metadata.
 
     Raises:
         TypeError: Raw CU data is not a mapping or field values are not JSON-compatible.
@@ -126,8 +126,9 @@ def parse_cu_result(raw: Mapping[str, Any]) -> ParsedCUResult:
         if content.get("segments"):
             if not isinstance(content["segments"], list) or not all(isinstance(item, dict) for item in content["segments"]):
                 raise ValueError("CU segments must be an array of objects")
-            declared.extend((content_path, item) for item in content["segments"])
-            continue
+            if content.get("fields") is None:
+                declared.extend((content_path, item) for item in content["segments"])
+                continue
         content_paths.add(content_path)
         path = f"/segments/{len(segments)}/fields"
         fields = content.get("fields")

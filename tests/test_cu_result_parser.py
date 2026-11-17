@@ -58,6 +58,32 @@ def test_given_routed_segment_when_parsed_then_parent_not_duplicated(raw: JsonOb
     assert parsed.segments[0].markdown == raw["contents"][1]["markdown"]
 
 
+@pytest.mark.parametrize("child_first", [False, True])
+@pytest.mark.parametrize("empty_fields", [False, True])
+def test_given_routed_extraction_with_segments_when_parsed_then_local_content_survives(child_first: bool, empty_fields: bool, raw: JsonObject) -> None:
+    """Keep extraction content even when CU repeats classifier segment metadata."""
+    child = raw["contents"][0]
+    child["path"] = "input1/segment1"
+    if empty_fields:
+        child["fields"] = {}
+    declaration = {"segmentId": "segment1", "category": "Events", "startPageNumber": 1, "endPageNumber": 1}
+    child["segments"] = [declaration]
+    parent = {"path": "input1", "markdown": "Classifier-only source", "segments": [declaration]}
+    raw["contents"] = [child, parent] if child_first else [parent, child]
+    original = deepcopy(raw)
+
+    parsed = parse_cu_result(raw)
+
+    assert len(parsed.segments) == 1
+    segment = parsed.segments[0]
+    assert segment.content_path == "input1/segment1"
+    assert segment.markdown == child["markdown"]
+    assert segment.category == "Events"
+    assert segment.pages == [1, 1]
+    assert segment.fields == ({} if empty_fields else {"items": [{"eventId": "A", "quantity": 12000, "unit": "kg", "date": "2026-01-01"}, {"eventId": "B", "quantity": 8000, "unit": "kg", "date": "2026-01-02"}]})
+    assert raw == original
+
+
 def test_given_wrapped_result_when_parsed_then_values_and_encoding_survive(raw: JsonObject) -> None:
     """Accept saved successful operation envelopes and preserve span encoding."""
     raw["stringEncoding"] = "utf16"
