@@ -120,7 +120,7 @@ def test_given_explicit_local_runner_when_offline_then_no_foundry_execution(raw:
     provider = mocker.patch("extractly.eval_runner.foundry.evaluate", side_effect=AssertionError("Foundry must not run"))
     evaluator = OfflineEvaluationPipeline(offline_config, runner=runner)
 
-    report = evaluator.run(raw, document_id="d", ground_truth=json.loads(record["response"]))
+    report = evaluator.run([{"id": "d", "cu_result": raw, "ground_truth": json.loads(record["response"])}])
 
     assert evaluator.runner is runner
     assert report["metrics"]["schema"]["valid"] == 1

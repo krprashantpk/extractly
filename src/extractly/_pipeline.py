@@ -174,8 +174,6 @@ def run_offline_pipeline(config: EvaluationConfig, documents: Iterable[JsonObjec
                 raise ValueError("Every document requires cu_result")
             parsed = parse_cu_result(document["cu_result"])
             context = "\n\n".join(f"[{segment.content_path}]\n{segment.markdown}" for segment in parsed.segments)
-            if len(context) > config.max_context_characters:
-                raise ValueError("Document exceeds configured context budget; split it explicitly, never truncate")
             if not isinstance(document.get("ground_truth"), dict):
                 raise ValueError("Offline evaluation requires ground_truth for every document")
             yield {
@@ -223,7 +221,7 @@ def _prepare_record(config: OnlineEvaluationConfig, document: JsonObject) -> Jso
     selections = select_analyzer_definitions(config.analyzer_definitions, raw)
     context = "\n\n".join(f"[{selection.content.content_path}]\n{selection.content.markdown}" for selection in selections)
     if len(context) > config.max_context_characters:
-        raise ValueError("Document exceeds configured context budget; split it explicitly, never truncate")
+        raise ValueError(f"Document exceeds configured context budget of {config.max_context_characters} characters; split it explicitly, never truncate")
     segments = [{**asdict(selection.content), "analyzer_definition": selection.analyzer_definition} for selection in selections if selection.skip_reason is None]
     payload = raw.get("result", raw)
     return {

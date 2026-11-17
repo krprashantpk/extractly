@@ -73,19 +73,52 @@ def test_given_valid_offline_document_when_run_then_parsed_fields_and_gold_are_f
     assert document == original
 
 
-@pytest.mark.parametrize("mode", ["offline", "online"])
-def test_given_excess_context_when_run_then_neither_workflow_truncates(mode: str, raw: JsonObject, mocker: MockerFixture) -> None:
-    """Preserve context-budget enforcement after extracting the mode paths."""
-    config = OfflineEvaluationConfig(max_context_characters=1) if mode == "offline" else OnlineEvaluationConfig(max_context_characters=1)
-    runner = LocalRunner()
-    run = mocker.patch.object(runner, "run")
+def test_given_large_context_when_offline_run_then_no_online_limit_applies(raw: JsonObject) -> None:
+    """Forward complete offline evidence beyond the online default character limit."""
+    markdown = "x" * 200000
+    raw["contents"][0]["markdown"] = markdown
+    received: list[str] = []
+
+    def custom(markdown: str) -> JsonObject:
+        """Retain the complete source evidence supplied to the evaluator."""
+        received.append(markdown)
+        return {"metrics": {"score": 1}}
 
     document = {"id": "d", "cu_result": raw, "ground_truth": {}}
-    documents = [document] if mode == "offline" else document
-    with pytest.raises(ValueError, match="never truncate"):
-        pipeline_module.run_pipeline(config, documents, {"schema": SchemaEvaluator()}, runner, mode=mode)
+    report = pipeline_module.run_offline_pipeline(OfflineEvaluationConfig(), [document], {"custom": custom}, LocalRunner())
 
-    run.assert_not_called()
+    assert received == [markdown]
+    assert report["metrics"] == {"custom": {"score": 1.0}}
+
+
+@pytest.mark.parametrize(("limit", "context_length", "accepted"), [
+    (None, 127000, True),
+    (None, 127001, False),
+    (128000, 127001, True),
+    (64, 64, True),
+    (64, 65, False),
+])
+def test_given_online_context_when_run_then_default_or_supplied_budget_applies(raw: JsonObject, limit: int | None, context_length: int, accepted: bool) -> None:
+    """Apply inclusive online context budgets without truncating accepted Markdown."""
+    config = OnlineEvaluationConfig() if limit is None else OnlineEvaluationConfig(max_context_characters=limit)
+    markdown = "x" * (context_length - len("[input1]\n"))
+    raw["contents"][0]["markdown"] = markdown
+    received: list[str] = []
+
+    def custom(markdown: str) -> JsonObject:
+        """Record complete evaluator evidence only after context validation succeeds."""
+        received.append(markdown)
+        return {"metrics": {"score": 1}}
+
+    document = {"id": "d", "cu_result": raw}
+    if accepted:
+        report = pipeline_module.run_online_pipeline(config, document, {"custom": custom}, LocalRunner())
+        assert received == [markdown]
+        assert report["metrics"] == {"custom": {"score": 1.0}}
+    else:
+        with pytest.raises(ValueError, match="context budget"):
+            pipeline_module.run_online_pipeline(config, document, {"custom": custom}, LocalRunner())
+        assert not received
 
 
 def test_given_default_offline_checks_when_run_then_reports_are_namespaced(raw: JsonObject, quantity_schema: type[EvaluationModel]) -> None:
@@ -93,7 +126,7 @@ def test_given_default_offline_checks_when_run_then_reports_are_namespaced(raw: 
     pipeline = OfflineEvaluationPipeline(OfflineEvaluationConfig(extraction_model=quantity_schema), runner=LocalRunner())
     gold = {"items": [{"quantity": 12000}, {"quantity": 8000}]}
 
-    report = pipeline.run(raw, document_id="d", ground_truth=gold)
+    report = pipeline.run([{"id": "d", "cu_result": raw, "ground_truth": gold}])
 
     assert set(report["metrics"]) == {"field", "structural", "schema"}
     assert report["metrics"]["field"]["extraction.pooled_field_f1"] == 1.0
@@ -109,7 +142,7 @@ def test_given_custom_evaluator_when_run_then_only_explicit_metrics_are_aggregat
 
     pipeline = OfflineEvaluationPipeline(OfflineEvaluationConfig(thresholds={"application.score": 0.995}), runner=LocalRunner(), evaluators={"application": custom})
 
-    report = pipeline.run(raw, document_id="d", ground_truth={})
+    report = pipeline.run([{"id": "d", "cu_result": raw, "ground_truth": {}}])
 
     assert report["metrics"] == {"application": {"score": 0.995, "undefined": None}}
     assert report["gates"]["application.score"] is False
@@ -156,7 +189,7 @@ def test_given_different_document_sizes_when_aggregated_then_mean_and_pooled_sco
 
     pipeline = OfflineEvaluationPipeline(OfflineEvaluationConfig(), runner=LocalRunner(), evaluators={"field": custom})
 
-    report = pipeline._evaluate([{"id": identity, "cu_result": raw, "ground_truth": {}} for identity in ("a", "b")])
+    report = pipeline.run([{"id": identity, "cu_result": raw, "ground_truth": {}} for identity in ("a", "b")])
 
     assert report["metrics"]["field"]["extraction.mean_document_f1"] == 0.75
     assert report["metrics"]["field"]["extraction.pooled_field_f1"] == 0.909
@@ -342,7 +375,7 @@ def test_given_multiple_segments_when_evaluated_then_markdown_matches_its_own_fi
     if offline:
         pipeline = OfflineEvaluationPipeline(OfflineEvaluationConfig(), runner=LocalRunner(), evaluators={"inspect": inspect})
         document["ground_truth"] = {"segments": [{"fields": {}}, {"fields": {}}]}
-        report = pipeline._evaluate([document])
+        report = pipeline.run([document])
     else:
         pipeline = OnlineEvaluationPipeline(OnlineEvaluationConfig(), runner=LocalRunner(), evaluators={"inspect": inspect})
         report = pipeline.run(raw, document_id="d")

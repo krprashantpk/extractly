@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class OfflineEvaluationConfig(EvaluationConfig):
-    """Configure reference-based evaluation, context limits, and metric gates."""
+    """Configure reference-based evaluation and metric gates."""
 
 
 class OfflineEvaluationPipeline:
@@ -25,7 +25,7 @@ class OfflineEvaluationPipeline:
         """Accept pipeline policy and an optional replacement evaluator mapping.
 
         Args:
-            config: Shared extraction model, context budget, and metric thresholds.
+            config: Shared extraction model and metric thresholds.
             runner: Required caller-owned execution runner.
             evaluators: Named metric-returning callables; None selects field, structural, and schema defaults.
 

@@ -31,7 +31,7 @@ class OnlineEvaluationPipeline:
         """Accept configured evaluators or construct defaults from a caller-owned client.
 
         Args:
-            config: Extraction model, analyzer definitions, context budget, and metric thresholds.
+            config: Extraction model, analyzer definitions, online context budget, and metric thresholds.
             runner: Required caller-owned execution runner.
             evaluators: Replacement metric-returning callable mapping; None selects LLM field, LLM structural, and schema defaults.
             client: Caller-owned OpenAI client required only for the default LLM evaluators.
@@ -66,7 +66,7 @@ class OnlineEvaluationPipeline:
 
         Raises:
             TypeError: The CU result is not a dictionary.
-            ValueError: Document identity, source data, analyzer routing, or context budget is invalid.
+            ValueError: Document identity, source data, or analyzer routing is invalid, or the online context budget is exceeded.
 
         Ground truth never enters evaluator inputs. Reports contain no batch
         aggregates or gates. Model-assisted scores are not verified accuracy.

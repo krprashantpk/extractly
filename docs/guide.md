@@ -85,6 +85,8 @@ remain `None`; defined ratios are rounded to three decimal places.
 
 ## Offline evaluation
 
+Offline evaluation forwards source Markdown without a character cap or truncation. Callers remain responsible for the resources required to process their inputs.
+
 `OfflineEvaluationPipeline(config, runner=..., evaluators=None)` selects:
 
 * `field`: `FieldEvaluator()`
@@ -157,6 +159,8 @@ unchanged. Authentication, retry policy, timeouts, and client cleanup remain
 the caller's responsibility.
 
 ## Online evaluation
+
+`OnlineEvaluationConfig.max_context_characters` defaults to **127,000 characters** when omitted. Set it explicitly, for example `OnlineEvaluationConfig(max_context_characters=200000)`, to override the default with a positive integer. The budget counts the combined document context, including content-path labels and separators; exceeding it raises before evaluation rather than truncating source evidence. This setting is online-only and measures characters, not tokens; provider context-window limits still apply.
 
 `OnlineEvaluationPipeline` defaults to LLM field, LLM structural, and schema
 checks. Supply an already-configured synchronous OpenAI client and deployment.

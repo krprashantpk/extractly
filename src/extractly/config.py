@@ -74,7 +74,7 @@ class ModelSettings(Settings):
 
 
 class EvaluationConfig(Settings):
-    """Share the extraction contract, context budget, and minimum-score gates.
+    """Share the extraction contract and minimum-score gates.
 
     extraction_model is the single model declaration for field selection,
     Pydantic validation, and registered comparison functions within each segment's
@@ -89,7 +89,6 @@ class EvaluationConfig(Settings):
     tables: dict[str, TableRule] = Field(default_factory=dict)
     project: str | None = None
     thresholds: dict[str, float] = Field(default_factory=dict)
-    max_context_characters: int = Field(default=100000, ge=1)
     _extraction_schema: ModelContract | None = PrivateAttr(default=None)
 
     @property
@@ -138,6 +137,10 @@ class OnlineEvaluationConfig(EvaluationConfig):
     analyzer_definitions supplies extraction rules and optionally one classifier.
     Empty definitions support custom evaluators that do not need analyzer rules.
     The extraction model and thresholds apply to every selected content item.
+
+    Attributes:
+        max_context_characters: Maximum combined source-context length, including content-path labels and separators. Defaults to 127000 characters; callers may supply a different positive integer.
     """
 
     analyzer_definitions: list[JsonObject] = Field(default_factory=list)
+    max_context_characters: int = Field(default=127000, ge=1)

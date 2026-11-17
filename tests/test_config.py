@@ -9,7 +9,7 @@ from extractly.types import JsonObject
 @pytest.mark.parametrize("settings", [
     {"groundednes": True},
     {"groundedness": True},
-    {"max_context_characters": True},
+    {"max_context_characters": 100000},
     {"max_fields_per_document": 0},
     {"groundedness_threshold": 6},
     {"thresholds": {"extraction.pooled_field_f1": float("nan")}},
@@ -44,6 +44,8 @@ def test_given_table_metric_level_when_loaded_then_positional_policy(level: str)
 
 @pytest.mark.parametrize("settings", [
     {"model": None},
+    {"max_context_characters": 0},
+    {"max_context_characters": True},
     {"groundedness": False},
     {"groundedness": True},
     {"field_labels": False},
@@ -66,6 +68,7 @@ def test_given_invalid_online_policy_when_loaded_then_rejected(settings: JsonObj
 
 @pytest.mark.parametrize("settings", [
     {"model": {"azure_endpoint": "https://example.invalid", "azure_deployment": "judge"}},
+    {"max_context_characters": 127000},
     {"groundedness": False},
     {"field_labels": False},
     {"completeness": False},
