@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import asdict
@@ -12,11 +13,13 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import cast
 
-from .config import EvaluationConfig
-from .cu import parse_cu_result
+from .config import EvaluationConfig, OnlineEvaluationConfig
+from .cu import parse_cu_result, select_analyzer_definitions
 from .eval_runner import EvaluationRunner, RunnerRequest, RunnerResult
 from .evaluators._shared import ratios
 from .types import Evaluator, JsonObject
+
+logger = logging.getLogger(__name__)
 
 
 def select_evaluators(evaluators: Mapping[str, Evaluator], runner: EvaluationRunner) -> dict[str, Evaluator]:
@@ -105,7 +108,7 @@ class DocumentEvaluator:
         parameters = signature(evaluator).parameters.values()
         self.accepted = None if any(parameter.kind is Parameter.VAR_KEYWORD for parameter in parameters) else {parameter.name for parameter in parameters}
 
-    def __call__(self, *, response: str, context: str, ground_truth: str | None = None, analyzer_definition: JsonObject | None = None, **kwargs: object) -> JsonObject:
+    def __call__(self, *, response: str, context: str, ground_truth: str | None = None, **kwargs: object) -> JsonObject:
         """Evaluate positional segments with their local Markdown and expose metrics."""
         candidate = json.loads(response)
         expected = json.loads(ground_truth) if self.offline and ground_truth is not None else None
@@ -125,7 +128,7 @@ class DocumentEvaluator:
             if self.offline:
                 inputs["ground_truth"] = gold
             else:
-                inputs["analyzer_definition"] = analyzer_definition
+                inputs["analyzer_definition"] = segment.get("analyzer_definition")
             arguments = inputs if self.accepted is None else {key: value for key, value in inputs.items() if key in self.accepted}
             output = self.evaluator(**arguments)
             metrics.append(validate_metrics(output, self.name))
@@ -147,6 +150,8 @@ def run_pipeline(config: EvaluationConfig, documents: Iterable[JsonObject] | Jso
     if mode == "online":
         if not isinstance(documents, dict):
             raise TypeError("Online evaluation requires one document dictionary; batch inputs are not supported")
+        if not isinstance(config, OnlineEvaluationConfig):
+            raise TypeError("Online evaluation requires an OnlineEvaluationConfig")
         return run_online_pipeline(config, documents, evaluators, runner)
     raise ValueError("mode must be offline or online")
 
@@ -185,7 +190,7 @@ def run_offline_pipeline(config: EvaluationConfig, documents: Iterable[JsonObjec
     return _execute_pipeline(config, records(), selected, adapted, runner, mode="offline")
 
 
-def run_online_pipeline(config: EvaluationConfig, document: JsonObject, evaluators: Mapping[str, Evaluator], runner: EvaluationRunner) -> JsonObject:
+def run_online_pipeline(config: OnlineEvaluationConfig, document: JsonObject, evaluators: Mapping[str, Evaluator], runner: EvaluationRunner) -> JsonObject:
     """Evaluate exactly one source-grounded document without reference labels."""
     if not isinstance(document, dict):
         raise TypeError("Online evaluation requires one document dictionary; batch inputs are not supported")
@@ -193,10 +198,19 @@ def run_online_pipeline(config: EvaluationConfig, document: JsonObject, evaluato
     selected = select_evaluators(evaluators, runner)
     adapted = {name: DocumentEvaluator(name, evaluator, config, offline=False) for name, evaluator in selected.items()}
     record = _prepare_record(config, document)
-    return _execute_pipeline(config, [record], selected, adapted, runner, mode="online")
+    skipped = record.pop("skipped_contents")
+    if record.pop("content_count"):
+        report = _execute_pipeline(config, [record], selected, adapted, runner, mode="online")
+    else:
+        report = {"mode": "online", "id": record["id"], "metrics": {}, "review_required": True, "configuration_hash": _configuration_hash(config, selected)}
+    if skipped:
+        logger.warning("Skipped %s content items during online evaluation for document '%s'", len(skipped), record["id"])
+        report["skipped_contents"] = skipped
+        report["review_required"] = True
+    return report
 
 
-def _prepare_record(config: EvaluationConfig, document: JsonObject) -> JsonObject:
+def _prepare_record(config: OnlineEvaluationConfig, document: JsonObject) -> JsonObject:
     """Parse one CU document and retain only supported reference-free inputs."""
     if not isinstance(document, dict):
         raise TypeError("Every document must be a dictionary")
@@ -205,20 +219,22 @@ def _prepare_record(config: EvaluationConfig, document: JsonObject) -> JsonObjec
         raise ValueError("Every document requires a unique nonempty id")
     if "cu_result" not in document:
         raise ValueError("Every document requires cu_result")
-    parsed = parse_cu_result(document["cu_result"])
-    context = "\n\n".join(f"[{segment.content_path}]\n{segment.markdown}" for segment in parsed.segments)
+    raw = document["cu_result"]
+    selections = select_analyzer_definitions(config.analyzer_definitions, raw)
+    context = "\n\n".join(f"[{selection.content.content_path}]\n{selection.content.markdown}" for selection in selections)
     if len(context) > config.max_context_characters:
         raise ValueError("Document exceeds configured context budget; split it explicitly, never truncate")
-    record = {
+    segments = [{**asdict(selection.content), "analyzer_definition": selection.analyzer_definition} for selection in selections if selection.skip_reason is None]
+    payload = raw.get("result", raw)
+    return {
         "id": identity,
-        "response": json.dumps({"segments": [asdict(segment) for segment in parsed.segments]}, ensure_ascii=False, allow_nan=False),
+        "response": json.dumps({"segments": segments}, ensure_ascii=False, allow_nan=False),
         "context": context,
         "query": "Evaluate the extracted document fields and all row occurrences.",
-        "string_encoding": parsed.string_encoding,
+        "string_encoding": payload.get("stringEncoding", raw.get("stringEncoding", "codePoint")),
+        "skipped_contents": [{"content_path": selection.content.content_path, "category": selection.content.category, "reason": selection.skip_reason} for selection in selections if selection.skip_reason is not None],
+        "content_count": len(segments),
     }
-    if document.get("analyzer_definition") is not None:
-        record["analyzer_definition"] = document["analyzer_definition"]
-    return record
 
 
 def _execute_pipeline(config: EvaluationConfig, records: Iterable[JsonObject], evaluators: Mapping[str, Evaluator], adapted: Mapping[str, Evaluator], runner: EvaluationRunner, *, mode: str) -> JsonObject:

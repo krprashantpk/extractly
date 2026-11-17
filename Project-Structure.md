@@ -20,6 +20,7 @@ src/extractly/
 |-- py.typed
 |-- cu/
 |   |-- __init__.py
+|   |-- analyzer_selector.py
 |   `-- cu_result_parser.py
 |-- eval_runner/
 |   |-- __init__.py
@@ -53,7 +54,8 @@ public API changes.
   structural, and schema evaluation against independent references.
 * [Online pipeline](src/extractly/online_pipeline.py) defaults to the two LLM
   evaluators and schema validation with a caller-owned client and deployment,
-  accepting one file per call and reporting direct metrics with a review flag.
+  accepting one file per call and configured analyzer definitions, with direct
+  metrics, explicit skipped-content outcomes, and a review flag.
 * [Pipeline mechanics](src/extractly/_pipeline.py) bind evaluator parameters,
   execute runner jobs, validate coverage, and build separate offline aggregate
   and single-document online metric reports.
@@ -62,6 +64,9 @@ public API changes.
 * [CU parser](src/extractly/cu/cu_result_parser.py) provides the single
   conversion path used by both pipelines and standalone callers. Offline
   references are supplied independently rather than generated from predictions.
+* [Analyzer selector](src/extractly/cu/analyzer_selector.py) pairs each parsed
+  content item with its extraction rules using classifier categories or explicit
+  analyzer IDs, retaining skipped content as explicit outcomes.
 * [Execution runners](src/extractly/eval_runner/base.py) retain explicit local
   or SDK execution and caller-owned publishing dependencies.
 * [Golden-dataset stores](src/extractly/store/base.py) load independent

@@ -297,7 +297,7 @@ def test_given_untyped_result_when_run_then_rejected(raw: JsonObject, online_con
     mocker.patch.object(local_runner, "run", return_value={"rows": [], "metrics": {}})
 
     with pytest.raises(RuntimeError, match="RunnerResult"):
-        OnlineEvaluationPipeline(online_config, runner=local_runner, evaluators={"schema": SchemaEvaluator()}).evaluate(raw, document_id="d")
+        OnlineEvaluationPipeline(online_config, runner=local_runner, evaluators={"schema": SchemaEvaluator()}).run(raw, document_id="d")
 
 
 def test_given_result_metadata_when_reported_then_raw_results_omitted(raw: JsonObject, online_config: OnlineEvaluationConfig, local_runner: EvaluationRunner, mocker: MockerFixture) -> None:
@@ -311,7 +311,7 @@ def test_given_result_metadata_when_reported_then_raw_results_omitted(raw: JsonO
 
     mocker.patch.object(local_runner, "run", side_effect=run_with_metadata)
 
-    report = OnlineEvaluationPipeline(online_config, runner=local_runner, evaluators={"schema": SchemaEvaluator()}).evaluate(raw, document_id="d")
+    report = OnlineEvaluationPipeline(online_config, runner=local_runner, evaluators={"schema": SchemaEvaluator()}).run(raw, document_id="d")
 
     assert "foundry" not in report
     assert "studio_url" not in report

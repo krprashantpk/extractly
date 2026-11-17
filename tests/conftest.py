@@ -95,6 +95,16 @@ def raw() -> JsonObject:
 
 
 @pytest.fixture
+def analyzer_definitions() -> list[JsonObject]:
+    """Return one classifier and two synthetic extraction definitions."""
+    return [
+        {"analyzerId": "router", "config": {"contentCategories": {"Events": {"analyzerId": "events"}, "Summary": {"analyzerId": "summary"}, "Unknown": {}}}},
+        {"analyzerId": "events", "fieldSchema": {"fields": {"items": {"type": "array"}}}},
+        {"analyzerId": "summary", "fieldSchema": {"fields": {"items": {"type": "array"}}}},
+    ]
+
+
+@pytest.fixture
 def record(raw: JsonObject) -> JsonObject:
     """Prepare the synthetic response used to isolate comparator behavior."""
     parsed = parse_cu_result(raw)

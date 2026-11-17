@@ -53,14 +53,16 @@ def test_given_public_api_when_imported_then_independent_evaluators() -> None:
 
 
 def test_given_cu_subpackage_when_imported_then_public_api_is_consistent() -> None:
-    """Expose one CU parser module through the root and subpackage."""
+    """Expose CU parsing and analyzer selection through the root and subpackage."""
     assert parse_cu_result is cu.parse_cu_result
     assert ParsedCUResult is cu.ParsedCUResult
     assert ParsedCUSegment is cu.ParsedCUSegment
+    assert extractly.AnalyzerSelection is cu.AnalyzerSelection
+    assert extractly.select_analyzer_definitions is cu.select_analyzer_definitions
     assert "parse_cu_result" in extractly.__all__
     assert not hasattr(extractly, "CUAdapter")
     assert not hasattr(extractly, "build_ground_truth")
-    assert {module.name for module in iter_modules(cu.__path__)} == {"cu_result_parser"}
+    assert {module.name for module in iter_modules(cu.__path__)} == {"analyzer_selector", "cu_result_parser"}
     assert find_spec("extractly.adapter") is None
 
 

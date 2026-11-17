@@ -97,8 +97,10 @@ for loading independent gold annotations.
 
 `OnlineEvaluationPipeline` defaults to LLM field, LLM structural, and schema
 checks. Pass your configured synchronous OpenAI `client` and `deployment` to the
-pipeline, and the original analyzer definition with each document. These defaults
-make remote inference requests, even when using `LocalRunner`.
+pipeline, and the original analyzer definitions as
+`OnlineEvaluationConfig(analyzer_definitions=[...])`. Each content item receives
+its selected analyzer's rules. These defaults make remote inference requests,
+even when using `LocalRunner`.
 
 To run schema-only assessment without a model service, reuse `Delivery` and
 `raw` from the quick start:
@@ -113,10 +115,11 @@ assert online_report["metrics"]["schema"]["valid"] == 1
 assert online_report["review_required"] is False
 ```
 
-Online `run(...)` and its `evaluate(...)` alias accept exactly one CU result
+Online `run(...)` accepts exactly one CU result
 dictionary, not a batch. Ground-truth labels never reach online evaluators.
 Reports contain direct document metrics, `id`, and `review_required`, not
 offline document lists, means, pooled scores, or gates.
+Unrouted classifier content is listed in `skipped_contents` and requires review.
 
 Online thresholds use document metric keys such as `field.extraction.document.f1`.
 Thresholds are checked before rounding; missing or undefined scores require

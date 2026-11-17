@@ -125,10 +125,9 @@ def test_given_online_record_with_gold_when_run_then_evaluator_never_receives_go
         received.append(kwargs)
         return {"metrics": {"score": 1}}
 
-    pipeline = OnlineEvaluationPipeline(OnlineEvaluationConfig(), runner=LocalRunner(), evaluators={"custom": custom})
-
     analyzer = {"description": "Online analyzer"}
-    report = pipeline_module.run_online_pipeline(pipeline.config, {"id": "d", "cu_result": raw, "ground_truth": {"secret": "gold"}, "analyzer_definition": analyzer}, pipeline.evaluators, pipeline.runner)
+    pipeline = OnlineEvaluationPipeline(OnlineEvaluationConfig(analyzer_definitions=[analyzer]), runner=LocalRunner(), evaluators={"custom": custom})
+    report = pipeline_module.run_online_pipeline(pipeline.config, {"id": "d", "cu_result": raw, "ground_truth": {"secret": "gold"}}, pipeline.evaluators, pipeline.runner)
 
     assert report["metrics"] == {"custom": {"score": 1.0}}
     assert received and "ground_truth" not in received[0]
@@ -144,7 +143,7 @@ def test_given_old_style_output_when_run_then_metrics_contract_is_required(raw: 
     pipeline = OnlineEvaluationPipeline(OnlineEvaluationConfig(), runner=LocalRunner(), evaluators={"custom": old_style})
 
     with pytest.raises(RuntimeError, match="metrics dictionary"):
-        pipeline.evaluate(raw, document_id="d")
+        pipeline.run(raw, document_id="d")
 
 
 def test_given_different_document_sizes_when_aggregated_then_mean_and_pooled_scores_differ(raw: JsonObject) -> None:
@@ -185,8 +184,9 @@ def test_given_online_defaults_when_run_then_reference_free_evaluator_inputs_are
     structural = mocker.patch.object(LLMStructuralEvaluator, "__call__", return_value={"metrics": {"extraction.table_row.tp": 2, "extraction.table_row.fp": 0, "extraction.table_row.fn": 0}, "review_required": True})
     pipeline = OnlineEvaluationPipeline(online_config, runner=LocalRunner(), client=client, deployment="test-model")
     analyzer = {"fieldSchema": {"fields": {"items": {"type": "array"}}}}
+    online_config.analyzer_definitions = [analyzer]
 
-    report = pipeline.evaluate(raw, document_id="d", analyzer_definition=analyzer)
+    report = pipeline.run(raw, document_id="d")
 
     assert set(report["metrics"]) == {"field", "structural", "schema"}
     assert report["review_required"] is True
@@ -213,7 +213,7 @@ def test_given_invalid_metric_when_evaluated_then_contract_failure_is_visible(me
     pipeline = OnlineEvaluationPipeline(OnlineEvaluationConfig(), runner=LocalRunner(), evaluators={"custom": invalid})
 
     with pytest.raises(RuntimeError, match="finite"):
-        pipeline.evaluate(raw, document_id="d")
+        pipeline.run(raw, document_id="d")
 
 
 @pytest.mark.parametrize("document", [{"id": "d"}, {"id": ""}, {"id": "d", "cu_result": {}}])
@@ -253,7 +253,7 @@ def test_given_provider_failure_when_run_then_original_error_and_cleanup_are_pre
     pipeline = OnlineEvaluationPipeline(OnlineEvaluationConfig(), runner=runner, evaluators={"custom": lambda **kwargs: {"metrics": {"score": 1}}})
 
     with pytest.raises(ConnectionError) as caught:
-        pipeline.evaluate(raw, document_id="d")
+        pipeline.run(raw, document_id="d")
 
     assert caught.value is failure
     assert paths and not paths[0].exists()
@@ -267,7 +267,7 @@ def test_given_unknown_occurrence_count_when_aggregated_then_pooled_scores_remai
 
     pipeline = OnlineEvaluationPipeline(OnlineEvaluationConfig(), runner=LocalRunner(), evaluators={"field": unknown})
 
-    report = pipeline.evaluate(raw, document_id="d")
+    report = pipeline.run(raw, document_id="d")
 
     assert report["metrics"]["field"]["extraction.document.f1"] is None
     assert report["review_required"] is True
@@ -281,7 +281,7 @@ def test_given_incomplete_runner_results_when_reported_then_rejected(rows: list[
     pipeline = OnlineEvaluationPipeline(OnlineEvaluationConfig(), runner=runner, evaluators={"custom": lambda **kwargs: {"metrics": {"score": 1}}})
 
     with pytest.raises(RuntimeError):
-        pipeline.evaluate(raw, document_id="d")
+        pipeline.run(raw, document_id="d")
 
 
 def test_given_different_deployments_when_run_then_report_fingerprint_changes(raw: JsonObject, mocker: MockerFixture) -> None:
@@ -292,7 +292,7 @@ def test_given_different_deployments_when_run_then_report_fingerprint_changes(ra
     for deployment in ("model-a", "model-b"):
         evaluator = LLMFieldEvaluator(client, deployment)
         pipeline = OnlineEvaluationPipeline(OnlineEvaluationConfig(), runner=LocalRunner(), evaluators={"field": evaluator})
-        reports.append(pipeline.evaluate(raw, document_id="d"))
+        reports.append(pipeline.run(raw, document_id="d"))
 
     assert reports[0]["configuration_hash"] != reports[1]["configuration_hash"]
 
@@ -329,8 +329,7 @@ def test_given_multiple_segments_when_evaluated_then_markdown_matches_its_own_fi
     assert report["metrics"] == {"inspect": {"score": 1.0}}
 
 
-@pytest.mark.parametrize("method", ["run", "evaluate"])
-def test_given_single_online_document_when_reported_then_only_document_metrics_are_returned(method: str, raw: JsonObject, mocker: MockerFixture) -> None:
+def test_given_single_online_document_when_reported_then_only_document_metrics_are_returned(raw: JsonObject, mocker: MockerFixture) -> None:
     """Keep online reporting independent of the offline aggregation builder."""
     mocker.patch.object(pipeline_module, "_build_report", side_effect=AssertionError("Offline report builder was called"))
 
@@ -340,7 +339,7 @@ def test_given_single_online_document_when_reported_then_only_document_metrics_a
 
     pipeline = OnlineEvaluationPipeline(OnlineEvaluationConfig(), runner=LocalRunner(), evaluators={"field": field})
 
-    report = getattr(pipeline, method)(raw, document_id="d")
+    report = pipeline.run(raw, document_id="d")
 
     assert set(report) == {"mode", "id", "metrics", "review_required", "configuration_hash"}
     assert report["mode"] == "online"
@@ -383,7 +382,7 @@ def test_given_online_threshold_when_reported_then_review_uses_unrounded_documen
     config = OnlineEvaluationConfig(thresholds={"custom.score": minimum})
     pipeline = OnlineEvaluationPipeline(config, runner=LocalRunner(), evaluators={"custom": custom})
 
-    report = pipeline.evaluate(raw, document_id="d")
+    report = pipeline.run(raw, document_id="d")
 
     assert report["review_required"] is review_required
     assert "gates" not in report
@@ -397,7 +396,7 @@ def test_given_missing_online_threshold_metric_when_reported_then_review_require
     """Treat unavailable threshold metrics as review failures, not approval."""
     pipeline = OnlineEvaluationPipeline(OnlineEvaluationConfig(thresholds={threshold: 0.9}), runner=LocalRunner(), evaluators={"custom": lambda **kwargs: {"metrics": {"score": 1}}})
 
-    report = pipeline.evaluate(raw, document_id="d")
+    report = pipeline.run(raw, document_id="d")
 
     assert report["review_required"] is True
 
@@ -407,7 +406,7 @@ def test_given_passing_online_threshold_when_reported_then_evaluator_review_sign
     """Never let successful threshold checks override a requested review."""
     pipeline = OnlineEvaluationPipeline(OnlineEvaluationConfig(thresholds={"custom.score": 0.9}), runner=LocalRunner(), evaluators={"custom": lambda **kwargs: {"metrics": {"score": 1}, "review_required": review_signal}})
 
-    report = pipeline.evaluate(raw, document_id="d")
+    report = pipeline.run(raw, document_id="d")
 
     assert report["review_required"] is review_signal
 
@@ -420,7 +419,7 @@ def test_given_online_runner_aggregates_when_reported_then_only_row_scores_are_u
     mocker.patch.object(runner, "run", return_value=RunnerResult(rows=[row], metrics={"custom.score": 99}, metadata={"diagnostic": "private"}))
     pipeline = OnlineEvaluationPipeline(OnlineEvaluationConfig(), runner=runner, evaluators={"custom": lambda **kwargs: {"metrics": {"score": 1}}})
 
-    report = pipeline.evaluate(raw, document_id="d")
+    report = pipeline.run(raw, document_id="d")
 
     assert report["metrics"] == {"custom": {"score": 0.995}}
     assert report["review_required"] is False
@@ -447,3 +446,95 @@ def test_given_offline_document_when_reported_then_existing_report_contract_is_p
     assert report["document_metrics"][0]["id"] == "d"
     assert report["gates"] == {"field.extraction.pooled_field_f1": True}
     assert report["gate_status"] == "pass"
+
+
+def test_given_classifier_contents_when_run_then_each_evaluator_receives_matching_rules(raw: JsonObject, analyzer_definitions: list[JsonObject], online_config: OnlineEvaluationConfig, mocker: MockerFixture) -> None:
+    """Evaluate every routed item with its own source, values, and definition."""
+    second = deepcopy(raw["contents"][0])
+    second.update(path="input2", category="Summary", markdown="Summary: quantity 999")
+    second["fields"]["items"]["valueArray"][0]["valueObject"]["quantity"]["valueNumber"] = 999
+    raw["contents"].append(second)
+    original = deepcopy(raw)
+    original_definitions = deepcopy(analyzer_definitions)
+    online_config.analyzer_definitions = analyzer_definitions
+    client = mocker.Mock(spec=OpenAI)
+    metrics = {"extraction.document.tp": 1, "extraction.document.fp": 0, "extraction.document.fn": 0}
+    field = mocker.patch.object(LLMFieldEvaluator, "__call__", return_value={"metrics": metrics})
+    structural = mocker.patch.object(LLMStructuralEvaluator, "__call__", return_value={"metrics": {"score": 1}})
+    pipeline = OnlineEvaluationPipeline(online_config, runner=LocalRunner(), client=client, deployment="test")
+
+    report = pipeline.run(raw, document_id="d")
+
+    for evaluator in (field, structural):
+        assert [call.kwargs["analyzer_definition"]["analyzerId"] for call in evaluator.call_args_list] == ["events", "summary"]
+        assert [call.kwargs["markdown"] for call in evaluator.call_args_list] == [raw["contents"][0]["markdown"], "Summary: quantity 999"]
+        assert [call.kwargs["extracted_values"]["items"][0]["quantity"] for call in evaluator.call_args_list] == [12000, 999]
+    assert report["metrics"]["field"]["extraction.document.tp"] == 2
+    assert report["metrics"]["field"]["extraction.document.f1"] == 1
+    assert raw == original
+    assert analyzer_definitions == original_definitions
+
+
+@pytest.mark.parametrize("all_skipped", [False, True])
+def test_given_unrouted_contents_when_run_then_skips_are_explicit_and_require_review(all_skipped: bool, raw: JsonObject, analyzer_definitions: list[JsonObject], mocker: MockerFixture) -> None:
+    """Never invoke evaluators for skipped content or present partial scores as complete."""
+    if not all_skipped:
+        second = deepcopy(raw["contents"][0])
+        second.update(path="input2", category="Unknown")
+        raw["contents"].append(second)
+    else:
+        raw["contents"][0]["category"] = "Unknown"
+    evaluator = mocker.Mock(spec=["__call__"], return_value={"metrics": {"score": 1}})
+    runner = LocalRunner()
+    run = mocker.spy(runner, "run")
+    config = OnlineEvaluationConfig(analyzer_definitions=analyzer_definitions)
+    pipeline = OnlineEvaluationPipeline(config, runner=runner, evaluators={"custom": evaluator})
+
+    report = pipeline.run(raw, document_id="d")
+
+    assert report["review_required"] is True
+    assert report["skipped_contents"] == [{"content_path": "input1" if all_skipped else "input2", "category": "Unknown", "reason": "Classifier category has no extraction analyzerId"}]
+    assert report["metrics"] == ({} if all_skipped else {"custom": {"score": 1.0}})
+    assert evaluator.call_count == int(not all_skipped)
+    assert run.call_count == int(not all_skipped)
+
+
+def test_given_nonclassifier_definitions_when_run_then_content_ids_select_rules(raw: JsonObject, analyzer_definitions: list[JsonObject]) -> None:
+    """Keep ID-based selection wired through configuration and runner binding."""
+    received: list[str] = []
+
+    def inspect(analyzer_definition: JsonObject) -> JsonObject:
+        """Record selected identities without provider calls."""
+        received.append(analyzer_definition["analyzerId"])
+        return {"metrics": {"score": 1}}
+
+    raw["contents"][0]["analyzerId"] = "events"
+    raw["contents"].append({**deepcopy(raw["contents"][0]), "path": "input2", "analyzerId": "summary"})
+    pipeline = OnlineEvaluationPipeline(OnlineEvaluationConfig(analyzer_definitions=analyzer_definitions[1:]), runner=LocalRunner(), evaluators={"inspect": inspect})
+
+    pipeline.run(raw, document_id="d")
+
+    assert received == ["events", "summary"]
+
+
+def test_given_ambiguous_analyzers_when_run_then_no_runner_is_called(raw: JsonObject, analyzer_definitions: list[JsonObject], mocker: MockerFixture) -> None:
+    """Validate all content routing before external evaluation starts."""
+    runner = LocalRunner()
+    run = mocker.spy(runner, "run")
+    pipeline = OnlineEvaluationPipeline(OnlineEvaluationConfig(analyzer_definitions=analyzer_definitions[1:]), runner=runner, evaluators={"custom": lambda **kwargs: {"metrics": {"score": 1}}})
+
+    with pytest.raises(ValueError, match="matching content or result analyzerId"):
+        pipeline.run(raw, document_id="d")
+
+    run.assert_not_called()
+
+
+def test_given_changed_analyzer_rules_when_run_then_configuration_hash_changes(raw: JsonObject) -> None:
+    """Fingerprint configured extraction instructions as well as deployment names."""
+    reports = []
+    for description in ("First rules", "Revised rules"):
+        config = OnlineEvaluationConfig(analyzer_definitions=[{"description": description}])
+        pipeline = OnlineEvaluationPipeline(config, runner=LocalRunner(), evaluators={"custom": lambda **kwargs: {"metrics": {"score": 1}}})
+        reports.append(pipeline.run(raw, document_id="d"))
+
+    assert reports[0]["configuration_hash"] != reports[1]["configuration_hash"]

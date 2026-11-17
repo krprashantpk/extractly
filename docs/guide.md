@@ -161,7 +161,7 @@ the caller's responsibility.
 `OnlineEvaluationPipeline` defaults to LLM field, LLM structural, and schema
 checks. Supply an already-configured synchronous OpenAI client and deployment.
 The following example requires caller-supplied `client`, `raw`, `model`, and
-`analyzer_definition`; it makes remote inference requests:
+an `analyzer_definitions` list; it makes remote inference requests:
 
 ```python
 from extractly import OnlineEvaluationConfig, OnlineEvaluationPipeline
@@ -170,6 +170,7 @@ from extractly.eval_runner import LocalRunner
 pipeline = OnlineEvaluationPipeline(
     OnlineEvaluationConfig(
         extraction_model=model,
+        analyzer_definitions=analyzer_definitions,
         thresholds={"field.extraction.document.f1": 0.95, "schema.valid": 1.0},
     ),
     runner=LocalRunner(),
@@ -179,7 +180,6 @@ pipeline = OnlineEvaluationPipeline(
 report = pipeline.run(
     raw,
     document_id="document-001",
-    analyzer_definition=analyzer_definition,
 )
 ```
 
@@ -187,15 +187,79 @@ Authentication, retries, timeouts, and cleanup remain client-owned.
 `LocalRunner` does not make LLM evaluators local. Source Markdown must cover
 the judged scope; incomplete evidence can produce unknown or ambiguous scores.
 
-Both `run(raw, document_id=..., analyzer_definition=...)` and its
-`evaluate(...)` alias accept exactly one CU result dictionary. Lists,
+`run(raw, document_id=...)` accepts exactly one CU result dictionary. Lists,
 generators, and other batch inputs are rejected before runner execution.
-Neither method has a gold parameter. Incoming `ground_truth` in lower-level
+There is no gold parameter. Incoming `ground_truth` in lower-level
 records is ignored and never enters runner datasets or online evaluator inputs.
 
 An explicit evaluator mapping replaces defaults and does not require `client`
 or `deployment`. For schema-only assessment, select
 `evaluators={"schema": SchemaEvaluator()}` and supply an extraction model.
+
+### Analyzer selection
+
+Put all original definitions in `OnlineEvaluationConfig.analyzer_definitions`,
+not in `run(...)` parameters. Standalone `LLMFieldEvaluator` and
+`LLMStructuralEvaluator` still receive one selected `analyzer_definition`.
+The shared extraction model applies to every evaluated content item.
+
+`select_analyzer_definitions(definitions, raw)` is also available independently
+from `extractly` and `extractly.cu`. It returns an ordered list of
+`AnalyzerSelection` objects containing parsed `content`, a borrowed
+`analyzer_definition`, and an optional `skip_reason`. Inputs are not modified.
+
+* A definition with `config.contentCategories` is a classifier, regardless of
+  its name or position in the array. Each content category selects the category's
+  `analyzerId`, then the supplied definition with that ID.
+* Routed children can inherit their category from a parent's `segments`
+  declaration, but use only their own Markdown and fields.
+* Without a classifier, a sole definition applies to every content item.
+  Multiple definitions require a matching content `analyzerId`, falling back
+  to the result or operation envelope's ID when the content omits it.
+  Ambiguous or unmatched identities raise before the runner is called.
+* Unknown categories, categories without an analyzer ID, missing referenced
+  definitions, and declarations without routed extraction content are skipped.
+  The report lists their paths, categories, and reasons in `skipped_contents`
+  and sets `review_required=True`. Metrics cover only evaluated content.
+* If all items are skipped, `metrics={}` and `review_required=True`; neither
+  the runner nor any evaluator is called.
+
+Analyzer IDs must be unique; multiple definitions require nonempty IDs.
+Multiple classifiers are rejected rather than guessed. An empty definitions
+list supports custom evaluators that do not need analyzer rules.
+
+This selector example runs without credentials or network calls:
+
+```python
+"""Select extraction rules for each classified content item."""
+
+from extractly import select_analyzer_definitions
+
+definitions = [
+    {"analyzerId": "classifier", "config": {"contentCategories": {
+        "Summary": {"analyzerId": "summary"},
+        "Unknown": {},
+    }}},
+    {"analyzerId": "summary", "fieldSchema": {"fields": {
+        "quantity": {"type": "number"},
+    }}},
+]
+raw = {"contents": [
+    {"path": "input1", "category": "Summary", "markdown": "Quantity: 10",
+     "fields": {"quantity": {"valueInteger": 10}}},
+    {"path": "input2", "category": "Unknown", "markdown": "Unclassified"},
+]}
+selected = select_analyzer_definitions(definitions, raw)
+assert selected[0].analyzer_definition is not None
+assert selected[0].analyzer_definition["analyzerId"] == "summary"
+assert selected[0].content.fields == {"quantity": 10}
+assert selected[1].skip_reason is not None
+```
+
+LLM evaluators and `LocalRunner` retain their synchronous contracts: model
+requests block their calling thread, and local evaluator calls are sequential.
+Async applications should run the synchronous pipeline in a caller-owned,
+bounded worker executor rather than on the event-loop thread.
 
 ## Extending Extractly
 

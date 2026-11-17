@@ -130,3 +130,14 @@ class EvaluationConfig(Settings):
             for selector in self._extraction_schema.fields
             for selected in [selector.split("/")[1:]]
         )
+
+
+class OnlineEvaluationConfig(EvaluationConfig):
+    """Configure source-grounded checks with caller-supplied analyzer definitions.
+
+    analyzer_definitions supplies extraction rules and optionally one classifier.
+    Empty definitions support custom evaluators that do not need analyzer rules.
+    The extraction model and thresholds apply to every selected content item.
+    """
+
+    analyzer_definitions: list[JsonObject] = Field(default_factory=list)
