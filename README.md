@@ -220,5 +220,3 @@ or discuss a larger change before starting work.
 Include tests for behavior changes and follow the
 [repository coding guidelines](AGENTS.md). See the
 [contributing guide](CONTRIBUTING.md) for development and submission requirements.
-
-Extractly is licensed under [MIT](LICENSE).

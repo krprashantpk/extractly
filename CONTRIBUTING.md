@@ -87,5 +87,3 @@ Describe the behavior or documentation change, explain relevant tradeoffs,
 and list the checks run. Keep unrelated refactors out of the change and use
 synthetic fixtures for added tests. CI checks Python 3.12 through 3.14 on
 Windows and Ubuntu; local success does not replace those compatibility gates.
-
-Contributions are provided under [the MIT license](LICENSE).
